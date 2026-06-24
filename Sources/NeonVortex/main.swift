@@ -75,6 +75,13 @@ final class GameViewController: NSViewController {
     }
 
     private func updateHUD(_ game: GameState) {
+        let comboGlow = CGFloat(max(0, min(1, game.comboPulse)))
+        scoreLabel.textColor = NSColor(
+            calibratedRed: 0.2 + comboGlow * 0.8,
+            green: 0.95,
+            blue: 1 - comboGlow * 0.65,
+            alpha: 1
+        )
         scoreLabel.stringValue = String(
             format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   ×%d",
             game.score,
@@ -89,7 +96,18 @@ final class GameViewController: NSViewController {
             statusLabel.stringValue = "NEON VORTEX\n\nPRESS RETURN"
             statusLabel.textColor = NSColor(calibratedRed: 1, green: 0.12, blue: 0.62, alpha: 1)
         case .playing:
-            statusLabel.stringValue = ""
+            if game.waveBanner > 0 {
+                let bannerGlow = CGFloat(max(0, min(1, game.waveBanner)))
+                statusLabel.stringValue = String(format: "WAVE %02d", game.wave)
+                statusLabel.textColor = NSColor(
+                    calibratedRed: 0.2 + bannerGlow * 0.8,
+                    green: 1,
+                    blue: 0.85,
+                    alpha: 0.35 + bannerGlow * 0.65
+                )
+            } else {
+                statusLabel.stringValue = ""
+            }
         case .paused:
             statusLabel.stringValue = "PAUSED"
             statusLabel.textColor = .systemYellow

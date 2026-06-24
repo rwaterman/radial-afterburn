@@ -33,6 +33,17 @@ struct GameStateTests {
         #expect(game.shots[0].lane == game.playerLane)
     }
 
+    @Test("Firing creates muzzle flash and kick")
+    func firingCreatesMuzzleFlashAndKick() {
+        var game = GameState()
+        game.start()
+        game.fire()
+
+        #expect(game.muzzleFlashes.count == 1)
+        #expect(game.muzzleFlashes[0].lane == game.playerLane)
+        #expect(game.screenShake > 0)
+    }
+
     @Test("Pause freezes simulation")
     func pauseFreezesSimulation() {
         var game = GameState()
@@ -46,6 +57,60 @@ struct GameStateTests {
         #expect(game.shots[0].depth == depth)
     }
 
+    @Test("Starting resets transient effects")
+    func startResetsTransientEffects() {
+        var game = GameState()
+        game.start()
+        game.fire()
+
+        #expect(!game.muzzleFlashes.isEmpty)
+        #expect(game.screenShake > 0)
+
+        game.start()
+
+        #expect(game.muzzleFlashes.isEmpty)
+        #expect(game.sparks.isEmpty)
+        #expect(game.shockwaves.isEmpty)
+        #expect(game.screenShake == 0)
+        #expect(game.tunnelKick == 0)
+        #expect(game.comboPulse == 0)
+        #expect(game.waveBanner == 0)
+    }
+
+    @Test("Destroying an enemy creates spectacle effects")
+    func enemyKillCreatesEffects() {
+        var game = GameState()
+        destroyFirstEnemy(in: &game)
+
+        #expect(game.score > 0)
+        #expect(!game.sparks.isEmpty)
+        #expect(!game.shockwaves.isEmpty)
+        #expect(game.screenShake > 0)
+        #expect(game.tunnelKick > 0)
+        #expect(game.comboPulse > 0)
+    }
+
+    @Test("Transient effects decay and expire")
+    func transientEffectsDecayAndExpire() {
+        var game = GameState()
+        destroyFirstEnemy(in: &game)
+
+        #expect(!game.sparks.isEmpty)
+        #expect(!game.shockwaves.isEmpty)
+        #expect(game.screenShake > 0)
+
+        for _ in 0..<80 {
+            game.update(deltaTime: 0.05)
+        }
+
+        #expect(game.muzzleFlashes.isEmpty)
+        #expect(game.sparks.isEmpty)
+        #expect(game.shockwaves.isEmpty)
+        #expect(game.screenShake == 0)
+        #expect(game.tunnelKick == 0)
+        #expect(game.comboPulse == 0)
+    }
+
     @Test("Seeded random is reproducible")
     func randomIsReproducible() {
         var first = SeededRandom(seed: 42)
@@ -53,5 +118,29 @@ struct GameStateTests {
 
         #expect(first.next() == second.next())
         #expect(first.next() == second.next())
+    }
+
+    private func destroyFirstEnemy(in game: inout GameState) {
+        game.start()
+        while game.enemies.isEmpty {
+            game.update(deltaTime: 0.05)
+        }
+
+        let targetLane = game.enemies[0].lane
+        movePlayer(to: targetLane, in: &game)
+        game.fire()
+
+        for _ in 0..<80 where game.score == 0 {
+            game.update(deltaTime: 0.05)
+        }
+    }
+
+    private func movePlayer(to lane: Int, in game: inout GameState) {
+        while game.playerLane != lane {
+            let clockwise = (lane - game.playerLane + GameState.laneCount) % GameState.laneCount
+            let counterClockwise = (game.playerLane - lane + GameState.laneCount) % GameState.laneCount
+            game.move(clockwise <= counterClockwise ? 1 : -1)
+            game.update(deltaTime: 0.08)
+        }
     }
 }
