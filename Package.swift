@@ -3,16 +3,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "NeonVortex",
+    name: "RadialAfterburn",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "NeonVortex", targets: ["NeonVortex"])
+        .executable(name: "RadialAfterburn", targets: ["RadialAfterburn"])
     ],
     targets: [
         .executableTarget(
-            name: "NeonVortex",
+            name: "RadialAfterburn",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),
@@ -20,8 +20,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "NeonVortexTests",
-            dependencies: ["NeonVortex"]
+            name: "RadialAfterburnTests",
+            dependencies: ["RadialAfterburn"]
         )
     ]
 )

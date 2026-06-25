@@ -1,11 +1,11 @@
-# Neon Vortex — Synthesized Dubstep Audio
+# Radial Afterburn — Synthesized Dubstep Audio
 
 **Date:** 2026-06-25
 **Status:** Approved design, pending implementation plan
 
 ## Goal
 
-Add dubstep music and sound effects to Neon Vortex. All audio is **synthesized in
+Add dubstep music and sound effects to Radial Afterburn. All audio is **synthesized in
 code** at runtime — no binary assets, no licensing risk, deterministic, CI-safe,
 and matching the neon/vector aesthetic. Music **ramps intensity with waves**.
 Players get separate music/SFX toggles, master volume, and a master mute.
@@ -37,12 +37,12 @@ GameState ──(GameAudioEvent values)──▶ Renderer.draw ──▶ AudioEn
 
 ### New files
 
-- `Sources/NeonVortex/GameAudioEvent.swift` — pure enum, no AVFoundation import.
-- `Sources/NeonVortex/Synth.swift` — real-time DSP core. `final class`,
+- `Sources/RadialAfterburn/GameAudioEvent.swift` — pure enum, no AVFoundation import.
+- `Sources/RadialAfterburn/Synth.swift` — real-time DSP core. `final class`,
   `@unchecked Sendable`. Owns all oscillator / voice / filter state as scalars and
   **preallocated** fixed buffers. Its `render(into:)` is the only method the audio
   thread touches; it allocates nothing and triggers no ARC inside the sample loop.
-- `Sources/NeonVortex/AudioEngine.swift` — `@MainActor` facade owning
+- `Sources/RadialAfterburn/AudioEngine.swift` — `@MainActor` facade owning
   `AVAudioEngine` + one `AVAudioSourceNode` connected to `mainMixerNode`. Bridges
   main thread → `Synth` through a single `OSAllocatedUnfairLock`-guarded queue.
 

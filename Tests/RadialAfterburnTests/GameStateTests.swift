@@ -1,5 +1,5 @@
 import Testing
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Game state")
 struct GameStateTests {

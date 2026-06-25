@@ -1,6 +1,6 @@
-# Neon Vortex
+# Radial Afterburn
 
-Neon Vortex is a small macOS tube shooter written in Swift and Metal. It draws
+Radial Afterburn is a small macOS tube shooter written in Swift and Metal. It draws
 everything procedurally: the tunnel, ships, particles, background, and HUD all
 come from code rather than a game engine or bundled art.
 
@@ -17,10 +17,10 @@ lanes, and clear each wave before enemies break through to the edge.
 
 ```sh
 swift build
-swift run NeonVortex
+swift run RadialAfterburn
 ```
 
-Or open `Package.swift` in Xcode and run the `NeonVortex` scheme.
+Or open `Package.swift` in Xcode and run the `RadialAfterburn` scheme.
 
 ## Test
 
@@ -61,11 +61,11 @@ Enemy types:
 - `MetalGameView.swift`: input and frame timing
 - `main.swift`: AppKit window, HUD, and application setup
 - `Shaders.swift`: small runtime-compiled Metal shader
-- `Tests/NeonVortexTests`: simulation tests
+- `Tests/RadialAfterburnTests`: simulation tests
 
 CI runs `swift build` and `swift test` on macOS.
 
 ## License
 
-MIT. Neon Vortex is an original project and is not affiliated with or endorsed
+MIT. Radial Afterburn is an original project and is not affiliated with or endorsed
 by Atari or the creators and rights holders of Tempest 2000.

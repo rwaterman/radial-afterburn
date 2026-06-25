@@ -1,6 +1,6 @@
 import Testing
 import simd
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Tunnel geometry")
 struct TunnelGeometryTests {

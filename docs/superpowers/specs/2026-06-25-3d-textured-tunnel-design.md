@@ -1,4 +1,4 @@
-# Neon Vortex — 3D Textured Tunnel + Bloom
+# Radial Afterburn — 3D Textured Tunnel + Bloom
 
 **Date:** 2026-06-25
 **Status:** Approved design, pending implementation plan
@@ -41,7 +41,7 @@ is therefore part of the design, not an afterthought.
 - **Empirically established:** `screencapture` of the live window works on the
   dev machine (Screen Recording granted), but it grabs the whole desktop.
 - **Primary dev-loop check:** an **offscreen screenshot mode** —
-  `NeonVortex --screenshot <path> [--frames N] [--width W --height H]
+  `RadialAfterburn --screenshot <path> [--frames N] [--width W --height H]
   [--seed S]`. It builds a Metal device with **no window**, runs a deterministic
   scripted game sequence (seeded RNG already exists), renders the final frame
   into an offscreen `bgra8Unorm` texture, reads it back, and writes a PNG via
@@ -78,52 +78,52 @@ TextureFactory → MTLTextures   TunnelMesh / SpriteBatch (build vertex buffers)
 
 ### New files
 
-- `Sources/NeonVortex/Matrix.swift` — pure `simd`. `perspective(fovyRadians:
+- `Sources/RadialAfterburn/Matrix.swift` — pure `simd`. `perspective(fovyRadians:
   aspect:near:far:)`, `lookAt(eye:center:up:)`, `translation`, `scale`, and a
   small camera-shake jitter. Just those helpers (Apple's `simd` ships no
   `perspective`/`lookAt`). Unit-tested.
-- `Sources/NeonVortex/TunnelGeometry.swift` — pure `simd`. The tunnel model:
+- `Sources/RadialAfterburn/TunnelGeometry.swift` — pure `simd`. The tunnel model:
   `worldPoint(lane:depth:time:wave:kick:combo:) -> SIMD3<Float>` (ring of
   `laneCount` vertices at constant world radius, extruded along −Z from the near
   rim at `depth 0` to the far vanishing point at `depth 1`; folds in the existing
   time warp and per-wave center drift), ring radius, and the billboard basis
   vectors. Shared by `GameState` (spark origins) and the renderer. Unit-tested.
-- `Sources/NeonVortex/TextureFactory.swift` — `@MainActor`. Builds mipmapped
+- `Sources/RadialAfterburn/TextureFactory.swift` — `@MainActor`. Builds mipmapped
   `MTLTexture`s by filling `UInt8` RGBA buffers in code: an emissive neon panel
   tile (glowing grid seams + value noise), a radial-glow dot (particles / shots /
   muzzle), an annular ring glow (shockwaves), and one SDF-ish sprite per entity
   (spike, flipper, tanker, player).
-- `Sources/NeonVortex/TunnelMesh.swift` — builds the tunnel wall-panel vertex
+- `Sources/RadialAfterburn/TunnelMesh.swift` — builds the tunnel wall-panel vertex
   buffer (textured quad strips) and the neon-edge line buffer from
   `TunnelGeometry`.
-- `Sources/NeonVortex/SpriteBatch.swift` — builds camera-facing billboard quads
+- `Sources/RadialAfterburn/SpriteBatch.swift` — builds camera-facing billboard quads
   (`float3 pos / float2 uv / float4 color`) for player, enemies, shots, sparks,
   shockwaves, and muzzle flashes, positioned in 3D and perspective-scaled.
-- `Sources/NeonVortex/Screenshot.swift` — the offscreen `--screenshot` batch
+- `Sources/RadialAfterburn/Screenshot.swift` — the offscreen `--screenshot` batch
   path (no `NSApplication`): device, `Renderer`, scripted sim, readback, PNG.
 
 ### Edited files
 
-- `Sources/NeonVortex/Renderer.swift` — slimmed to an orchestrator, **decoupled
+- `Sources/RadialAfterburn/Renderer.swift` — slimmed to an orchestrator, **decoupled
   from `MTKView`**: owns device, pipelines, depth-stencil states, textures, and
   the offscreen targets; renders a scene into `sceneHDR` + depth, then runs the
   bloom chain into a supplied final color target (the view's drawable, or an
   offscreen texture for screenshots). Recreates size-dependent targets on resize.
-- `Sources/NeonVortex/Shaders.swift` — grows from one trivial pass-through to:
+- `Sources/RadialAfterburn/Shaders.swift` — grows from one trivial pass-through to:
   `texturedLit` (vertex/fragment, samples bound texture × color + fog),
   `neonLine` (vertex/fragment, MVP + fog), and the bloom trio (`brightPass`,
   separable `blur`, `composite`) drawn as a fullscreen triangle. Plus a shared
   `Uniforms` struct (`viewProjection`, `time`, fog params).
-- `Sources/NeonVortex/GameState.swift` — `Spark.position` / `Spark.velocity` and
+- `Sources/RadialAfterburn/GameState.swift` — `Spark.position` / `Spark.velocity` and
   `Shockwave.position` become `SIMD3<Float>`; `emitExplosion` / wave-clear
   compute 3D origins via `TunnelGeometry`. No rule changes.
-- `Sources/NeonVortex/MetalGameView.swift` — minimal change. `Renderer` owns the
+- `Sources/RadialAfterburn/MetalGameView.swift` — minimal change. `Renderer` owns the
   scene and depth targets, not the view, so the view needs no depth attachment
   and `framebufferOnly` stays `true` (the drawable is only the composite pass's
   render target; readback for screenshots comes from a separate offscreen
   texture). It continues to hand `Renderer` the drawable size and the drawable's
   render pass for the final composite.
-- `Sources/NeonVortex/main.swift` — parse `--screenshot` and friends before
+- `Sources/RadialAfterburn/main.swift` — parse `--screenshot` and friends before
   `app.run()`; route to the batch path when present. HUD unchanged.
 
 ## Coordinate model & projection

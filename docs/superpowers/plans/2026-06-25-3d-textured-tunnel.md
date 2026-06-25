@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Neon Vortex's flat 2D vector renderer with a 3D perspective tunnel — procedural texture-mapped walls, billboard sprites, distance fog, and a bloom post-process pass.
+**Goal:** Replace Radial Afterburn's flat 2D vector renderer with a 3D perspective tunnel — procedural texture-mapped walls, billboard sprites, distance fog, and a bloom post-process pass.
 
 **Architecture:** Gameplay stays in abstract `lane`/`depth`; a pure `simd`-only `TunnelGeometry` + `Matrix` core (unit-tested, CI-safe) projects those into a 3D world rendered with a real perspective camera. The renderer is decoupled from `MTKView` so a headless `--screenshot` mode can render frames to PNG for permission-free visual verification at each staged checkpoint. Bloom is the final pass: scene → `rgba16Float` HDR target → bright-pass → separable blur → composite.
 
@@ -24,8 +24,8 @@
 ### Task 1: Pure projection math — `Matrix.swift`
 
 **Files:**
-- Create: `Sources/NeonVortex/Matrix.swift`
-- Test: `Tests/NeonVortexTests/MatrixTests.swift`
+- Create: `Sources/RadialAfterburn/Matrix.swift`
+- Test: `Tests/RadialAfterburnTests/MatrixTests.swift`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -36,10 +36,10 @@
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// Tests/NeonVortexTests/MatrixTests.swift
+// Tests/RadialAfterburnTests/MatrixTests.swift
 import Testing
 import simd
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Matrix")
 struct MatrixTests {
@@ -92,7 +92,7 @@ Expected: FAIL — `cannot find 'perspectiveMatrix' in scope`.
 - [ ] **Step 3: Write the implementation**
 
 ```swift
-// Sources/NeonVortex/Matrix.swift
+// Sources/RadialAfterburn/Matrix.swift
 import simd
 
 /// Right-handed perspective projection, camera looking down -Z, clip-space z in [0, 1] (Metal).
@@ -130,7 +130,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/Matrix.swift Tests/NeonVortexTests/MatrixTests.swift
+git add Sources/RadialAfterburn/Matrix.swift Tests/RadialAfterburnTests/MatrixTests.swift
 git commit -m "feat: pure perspective/lookAt matrix helpers"
 ```
 
@@ -139,8 +139,8 @@ git commit -m "feat: pure perspective/lookAt matrix helpers"
 ### Task 2: Pure tunnel model — `TunnelGeometry.swift`
 
 **Files:**
-- Create: `Sources/NeonVortex/TunnelGeometry.swift`
-- Test: `Tests/NeonVortexTests/TunnelGeometryTests.swift`
+- Create: `Sources/RadialAfterburn/TunnelGeometry.swift`
+- Test: `Tests/RadialAfterburnTests/TunnelGeometryTests.swift`
 
 **Interfaces:**
 - Consumes: nothing (pure `simd`).
@@ -153,10 +153,10 @@ git commit -m "feat: pure perspective/lookAt matrix helpers"
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// Tests/NeonVortexTests/TunnelGeometryTests.swift
+// Tests/RadialAfterburnTests/TunnelGeometryTests.swift
 import Testing
 import simd
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Tunnel geometry")
 struct TunnelGeometryTests {
@@ -200,7 +200,7 @@ Expected: FAIL — `cannot find 'TunnelGeometry' in scope`.
 - [ ] **Step 3: Write the implementation**
 
 ```swift
-// Sources/NeonVortex/TunnelGeometry.swift
+// Sources/RadialAfterburn/TunnelGeometry.swift
 import simd
 
 /// Pure model of the tube in world space. No Metal, no Foundation — unit-tested headless.
@@ -235,7 +235,7 @@ enum TunnelGeometry {
 
 - [ ] **Step 4: Update `GameState.laneCount` to alias the shared constant**
 
-In `Sources/NeonVortex/GameState.swift`, change the line `static let laneCount = 16` to:
+In `Sources/RadialAfterburn/GameState.swift`, change the line `static let laneCount = 16` to:
 
 ```swift
     static let laneCount = TunnelGeometry.laneCount
@@ -249,7 +249,7 @@ Expected: PASS (4 tests). Then `swift test 2>&1 | tail -5` — all suites still 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/NeonVortex/TunnelGeometry.swift Tests/NeonVortexTests/TunnelGeometryTests.swift Sources/NeonVortex/GameState.swift
+git add Sources/RadialAfterburn/TunnelGeometry.swift Tests/RadialAfterburnTests/TunnelGeometryTests.swift Sources/RadialAfterburn/GameState.swift
 git commit -m "feat: pure 3D tunnel geometry model"
 ```
 
@@ -258,8 +258,8 @@ git commit -m "feat: pure 3D tunnel geometry model"
 ### Task 3: Widen particles to 3D — `GameState.swift`
 
 **Files:**
-- Modify: `Sources/NeonVortex/GameState.swift` (`Spark`, `Shockwave`, `update`, `emitExplosion`, `emitShockwave`, wave-clear branch)
-- Test: `Tests/NeonVortexTests/GameStateTests.swift` (add one test; existing stay green)
+- Modify: `Sources/RadialAfterburn/GameState.swift` (`Spark`, `Shockwave`, `update`, `emitExplosion`, `emitShockwave`, wave-clear branch)
+- Test: `Tests/RadialAfterburnTests/GameStateTests.swift` (add one test; existing stay green)
 
 **Interfaces:**
 - Consumes: `TunnelGeometry.worldPoint`.
@@ -268,7 +268,7 @@ git commit -m "feat: pure 3D tunnel geometry model"
 - [ ] **Step 1: Write the failing test**
 
 ```swift
-// Add to Tests/NeonVortexTests/GameStateTests.swift inside the GameStateTests suite
+// Add to Tests/RadialAfterburnTests/GameStateTests.swift inside the GameStateTests suite
     @Test("Explosion sparks originate inside the tunnel's Z range")
     func sparksAreInTunnelSpace() {
         var game = GameState()
@@ -289,7 +289,7 @@ Expected: FAIL — `value of type 'SIMD2<Float>' has no member` / type mismatch 
 
 - [ ] **Step 3: Change the structs to 3D**
 
-In `Sources/NeonVortex/GameState.swift`, change `Spark` and `Shockwave`:
+In `Sources/RadialAfterburn/GameState.swift`, change `Spark` and `Shockwave`:
 
 ```swift
 struct Spark: Identifiable {
@@ -388,7 +388,7 @@ Expected: PASS — the new `sparksAreInTunnelSpace` test plus all existing `Game
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/NeonVortex/GameState.swift Tests/NeonVortexTests/GameStateTests.swift
+git add Sources/RadialAfterburn/GameState.swift Tests/RadialAfterburnTests/GameStateTests.swift
 git commit -m "feat: emit explosion particles in 3D tunnel space"
 ```
 
@@ -399,11 +399,11 @@ git commit -m "feat: emit explosion particles in 3D tunnel space"
 This stands up the new rendering structure with a minimal scene (clear + one full-screen-projected neon triangle) so the offscreen screenshot path, PNG writeback, MTKView decoupling, and pipeline creation are all proven before any tunnel geometry exists. The old 2D drawing is removed; the game window temporarily shows the placeholder scene.
 
 **Files:**
-- Rewrite: `Sources/NeonVortex/Shaders.swift`
-- Rewrite: `Sources/NeonVortex/Renderer.swift`
-- Create: `Sources/NeonVortex/Screenshot.swift`
-- Modify: `Sources/NeonVortex/MetalGameView.swift` (init signature)
-- Modify: `Sources/NeonVortex/main.swift` (arg dispatch before `app.run()`)
+- Rewrite: `Sources/RadialAfterburn/Shaders.swift`
+- Rewrite: `Sources/RadialAfterburn/Renderer.swift`
+- Create: `Sources/RadialAfterburn/Screenshot.swift`
+- Modify: `Sources/RadialAfterburn/MetalGameView.swift` (init signature)
+- Modify: `Sources/RadialAfterburn/main.swift` (arg dispatch before `app.run()`)
 
 **Interfaces:**
 - Produces:
@@ -721,7 +721,7 @@ if let idx = arguments.firstIndex(of: "--screenshot") {
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task4.png --frames 1 --width 800 --height 600
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task4.png --frames 1 --width 800 --height 600
 ```
 Expected: build succeeds; `/tmp/nv-task4.png` exists. **Open/Read `/tmp/nv-task4.png`** and confirm a dark frame with a single cyan→magenta→blue neon triangle outline near center. (This proves device init, pipeline, offscreen render, readback, PNG writeback, and arg parsing — with no GPU dependency on a window.)
 
@@ -730,12 +730,12 @@ Expected: build succeeds; `/tmp/nv-task4.png` exists. **Open/Read `/tmp/nv-task4
 ```bash
 swift build 2>&1 | tail -3
 ```
-Expected: clean build. (Reviewer may run `.build/debug/NeonVortex` to see the same placeholder triangle in-window; not required for the gate.)
+Expected: clean build. (Reviewer may run `.build/debug/RadialAfterburn` to see the same placeholder triangle in-window; not required for the gate.)
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Sources/NeonVortex/Shaders.swift Sources/NeonVortex/Renderer.swift Sources/NeonVortex/Screenshot.swift Sources/NeonVortex/MetalGameView.swift Sources/NeonVortex/main.swift
+git add Sources/RadialAfterburn/Shaders.swift Sources/RadialAfterburn/Renderer.swift Sources/RadialAfterburn/Screenshot.swift Sources/RadialAfterburn/MetalGameView.swift Sources/RadialAfterburn/main.swift
 git commit -m "feat: decoupled renderer spine + offscreen screenshot mode"
 ```
 
@@ -744,10 +744,10 @@ git commit -m "feat: decoupled renderer spine + offscreen screenshot mode"
 ### Task 5: Textured tunnel wall panels (Checkpoint A, part 1)
 
 **Files:**
-- Create: `Sources/NeonVortex/TextureFactory.swift`
-- Create: `Sources/NeonVortex/TunnelMesh.swift`
-- Modify: `Sources/NeonVortex/Shaders.swift` (add `texturedLit` functions + `TexVertex`)
-- Modify: `Sources/NeonVortex/Renderer.swift` (textured pipeline, panel texture, draw panels in `encodeScene`)
+- Create: `Sources/RadialAfterburn/TextureFactory.swift`
+- Create: `Sources/RadialAfterburn/TunnelMesh.swift`
+- Modify: `Sources/RadialAfterburn/Shaders.swift` (add `texturedLit` functions + `TexVertex`)
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (textured pipeline, panel texture, draw panels in `encodeScene`)
 
 **Interfaces:**
 - Consumes: `TunnelGeometry.worldPoint`, `FrameUniforms`.
@@ -981,14 +981,14 @@ struct TexVertex {
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task5.png --frames 1 --width 1000 --height 700
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task5.png --frames 1 --width 1000 --height 700
 ```
 Expected: build clean; **Read `/tmp/nv-task5.png`** and confirm a textured tube receding to a vanishing point — glowing cyan grid seams on the near rings fading to violet down the throat. There is no occlusion yet (no depth buffer) and no bright edges; those come in Task 6.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/NeonVortex/TextureFactory.swift Sources/NeonVortex/TunnelMesh.swift Sources/NeonVortex/Shaders.swift Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/TextureFactory.swift Sources/RadialAfterburn/TunnelMesh.swift Sources/RadialAfterburn/Shaders.swift Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: textured 3D tunnel wall panels"
 ```
 
@@ -997,8 +997,8 @@ git commit -m "feat: textured 3D tunnel wall panels"
 ### Task 6: Neon edges + depth buffer + fog (Checkpoint A complete)
 
 **Files:**
-- Modify: `Sources/NeonVortex/TunnelMesh.swift` (add `edges`)
-- Modify: `Sources/NeonVortex/Renderer.swift` (depth texture + depth-stencil states, edge draw, pass order)
+- Modify: `Sources/RadialAfterburn/TunnelMesh.swift` (add `edges`)
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (depth texture + depth-stencil states, edge draw, pass order)
 
 **Interfaces:**
 - Produces: `static func TunnelMesh.edges(rings: Int, time: Float, kick: Float, wave: Int) -> [LineVertex]`; `Renderer` now owns a `Depth32Float` texture + two `MTLDepthStencilState`s (`depthWriteState`, `depthTestState`).
@@ -1119,14 +1119,14 @@ Update `encodeScene` to draw panels with depth-write, then edges with depth-test
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task6.png --frames 1 --width 1100 --height 760
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task6.png --frames 1 --width 1100 --height 760
 ```
 Expected: **Read `/tmp/nv-task6.png`** — a glowing cyan wireframe tube (depth rings + radial lane lines) over the textured panels, receding to a vanishing point with violet fog at the far end. This is Checkpoint A: the 3D textured tunnel. Compare against the old flat look in the spec — it should clearly read as 3D depth, not concentric 2D polygons.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/TunnelMesh.swift Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/TunnelMesh.swift Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: neon tunnel edges with depth buffer and fog"
 ```
 
@@ -1135,9 +1135,9 @@ git commit -m "feat: neon tunnel edges with depth buffer and fog"
 ### Task 7: Sprite textures + billboards — player and enemies (Checkpoint B, part 1)
 
 **Files:**
-- Modify: `Sources/NeonVortex/TextureFactory.swift` (glow dot + per-entity sprites)
-- Create: `Sources/NeonVortex/SpriteBatch.swift`
-- Modify: `Sources/NeonVortex/Renderer.swift` (sprite textures, additive textured pipeline, draw player + enemies)
+- Modify: `Sources/RadialAfterburn/TextureFactory.swift` (glow dot + per-entity sprites)
+- Create: `Sources/RadialAfterburn/SpriteBatch.swift`
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (sprite textures, additive textured pipeline, draw player + enemies)
 
 **Interfaces:**
 - Consumes: `game.playerLane`, `game.enemies`, `TunnelGeometry`, additive `texturedPipeline`.
@@ -1321,14 +1321,14 @@ Add the color helper:
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task7.png --frames 60 --width 1100 --height 760
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task7.png --frames 60 --width 1100 --height 760
 ```
 Expected: **Read `/tmp/nv-task7.png`** — the textured tube plus a glowing cyan player ship at the near rim and several enemy sprites (pink diamonds / orange wings / blue hexes) at various depths, smaller the farther they are. Enemies behind the near wall geometry are correctly occluded.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/TextureFactory.swift Sources/NeonVortex/SpriteBatch.swift Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/TextureFactory.swift Sources/RadialAfterburn/SpriteBatch.swift Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: billboard sprites for player and enemies"
 ```
 
@@ -1337,7 +1337,7 @@ git commit -m "feat: billboard sprites for player and enemies"
 ### Task 8: Shots + muzzle flashes (Checkpoint B complete)
 
 **Files:**
-- Modify: `Sources/NeonVortex/Renderer.swift` (draw shots + muzzle flashes as glow billboards in `encodeScene`)
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (draw shots + muzzle flashes as glow billboards in `encodeScene`)
 
 **Interfaces:**
 - Consumes: `game.shots`, `game.muzzleFlashes`, `glowTexture`, `additiveTexturedPipeline`.
@@ -1369,14 +1369,14 @@ After the enemy loop in `encodeScene`:
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task8.png --frames 30 --width 1100 --height 760
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task8.png --frames 30 --width 1100 --height 760
 ```
 Expected: **Read `/tmp/nv-task8.png`** — yellow shot glows traveling down the lanes from the player and a bright muzzle flash at the firing lane. (The scripted scene fires every 9 frames, so shots are in flight.) This completes Checkpoint B.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: shots and muzzle flashes as 3D glow billboards"
 ```
 
@@ -1385,8 +1385,8 @@ git commit -m "feat: shots and muzzle flashes as 3D glow billboards"
 ### Task 9: 3D sparks + shockwaves (Checkpoint C)
 
 **Files:**
-- Modify: `Sources/NeonVortex/TextureFactory.swift` (ring glow)
-- Modify: `Sources/NeonVortex/Renderer.swift` (draw sparks + shockwaves from the Task 3 3D data)
+- Modify: `Sources/RadialAfterburn/TextureFactory.swift` (ring glow)
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (draw sparks + shockwaves from the Task 3 3D data)
 
 **Interfaces:**
 - Consumes: `game.sparks` (`SIMD3` position), `game.shockwaves` (`SIMD3` position), `glowTexture`, new `ringTexture`.
@@ -1449,14 +1449,14 @@ To capture an explosion, the scripted scene must land a hit. Increase frames so 
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task9.png --frames 150 --width 1100 --height 760
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task9.png --frames 150 --width 1100 --height 760
 ```
 Expected: **Read `/tmp/nv-task9.png`** — at least one explosion: a burst of colored spark glows and an expanding ring at the enemy's depth in the tunnel (not full-screen 2D). If no explosion is visible, re-run with `--frames 220`. This is Checkpoint C.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/TextureFactory.swift Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/TextureFactory.swift Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: 3D sparks and shockwave rings"
 ```
 
@@ -1467,8 +1467,8 @@ git commit -m "feat: 3D sparks and shockwave rings"
 Switches the scene render from drawing directly to the final target to drawing into an `rgba16Float` HDR texture, then runs bright-pass → separable blur → composite into the final `bgra8Unorm` target. Both the live and snapshot paths benefit automatically.
 
 **Files:**
-- Modify: `Sources/NeonVortex/Shaders.swift` (fullscreen-triangle bloom functions)
-- Modify: `Sources/NeonVortex/Renderer.swift` (HDR target + half-res bloom textures + post pipelines + new pass orchestration)
+- Modify: `Sources/RadialAfterburn/Shaders.swift` (fullscreen-triangle bloom functions)
+- Modify: `Sources/RadialAfterburn/Renderer.swift` (HDR target + half-res bloom textures + post pipelines + new pass orchestration)
 
 **Interfaces:**
 - Produces: `Renderer` owns `sceneHDR` (rgba16Float), `bloomA`/`bloomB` (half-res rgba16Float), and pipelines `brightPipeline`, `blurPipeline`, `compositePipeline`.
@@ -1674,14 +1674,14 @@ Delete the now-unused `encode(pass:size:time:)` method.
 
 ```bash
 swift build 2>&1 | tail -5
-.build/debug/NeonVortex --screenshot /tmp/nv-task10.png --frames 150 --width 1100 --height 760
+.build/debug/RadialAfterburn --screenshot /tmp/nv-task10.png --frames 150 --width 1100 --height 760
 ```
 Expected: **Read `/tmp/nv-task10.png`** — the full scene now blooms: neon edges, shots, and explosions have soft glowing halos; bright cores bleed light into surrounding pixels. The tonemap keeps highlights from clipping to flat white. This is Checkpoint D — the finished look.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/NeonVortex/Shaders.swift Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/Shaders.swift Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: HDR bloom post-processing pass"
 ```
 
@@ -1695,7 +1695,7 @@ git commit -m "feat: HDR bloom post-processing pass"
 
 - [ ] **Step 1: Confirm no dead 2D code remains**
 
-Run: `grep -n "horizontalScale\|screenPoint\|VectorVertex\|frameShakeOffset" Sources/NeonVortex/*.swift || echo "clean"`
+Run: `grep -n "horizontalScale\|screenPoint\|VectorVertex\|frameShakeOffset" Sources/RadialAfterburn/*.swift || echo "clean"`
 Expected: `clean` (all replaced by the 3D path). If any remain, remove them.
 
 - [ ] **Step 2: Run the full test suite**
@@ -1724,7 +1724,7 @@ And under Build and Run, add:
 Render a frame to PNG without opening a window:
 
 ​```sh
-swift run NeonVortex --screenshot out.png --frames 150 --width 1100 --height 760
+swift run RadialAfterburn --screenshot out.png --frames 150 --width 1100 --height 760
 ​```
 ```
 

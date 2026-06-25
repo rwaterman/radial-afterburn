@@ -17,12 +17,21 @@ func runScreenshot(path: String, frames: Int, width: Int, height: Int) -> Bool {
         return false
     }
 
-    // Deterministic scripted scene: start, then advance with periodic fire + drift.
+    // Deterministic scripted scene tuned to showcase content: fire sparingly so
+    // enemies survive and advance to visible mid-tunnel depths (instead of being
+    // killed at the far end while still buried in fog), keep a couple of shots in
+    // flight, and sweep the player across lanes so explosions land at varied depths.
     renderer.game.start()
     let dt: Float = 1.0 / 60
-    for i in 0..<max(frames, 1) {
-        if i % 9 == 0 { renderer.game.fire() }
-        if i % 24 == 12 { renderer.game.move(1) }
+    let total = max(frames, 1)
+    // Hold fire for most of the run so the slow enemies advance to visible
+    // mid-tunnel depths instead of being cleared at the far end. Fire only a short
+    // burst right before the snapshot so a couple of shots are still in flight (and
+    // a fresh explosion may be landing) without emptying the field.
+    let firingStart = max(0, total - 48)
+    for i in 0..<total {
+        if i >= firingStart, i % 12 == 0 { renderer.game.fire() }
+        if i % 11 == 0 { renderer.game.move(i % 22 == 0 ? 1 : -1) }
         renderer.game.update(deltaTime: dt)
     }
 

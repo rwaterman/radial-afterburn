@@ -93,7 +93,7 @@ final class GameViewController: NSViewController {
 
         switch game.phase {
         case .title:
-            statusLabel.stringValue = "NEON VORTEX\n\nPRESS RETURN"
+            statusLabel.stringValue = "RADIAL AFTERBURN\n\nPRESS RETURN"
             statusLabel.textColor = NSColor(calibratedRed: 1, green: 0.12, blue: 0.62, alpha: 1)
         case .playing:
             if game.waveBanner > 0 {
@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = GameViewController()
         let window = NSWindow(contentViewController: controller)
-        window.title = "Neon Vortex"
+        window.title = "Radial Afterburn"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 1100, height: 760))
         window.minSize = NSSize(width: 720, height: 520)

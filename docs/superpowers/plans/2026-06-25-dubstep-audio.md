@@ -1,8 +1,8 @@
-# Neon Vortex Dubstep Audio Implementation Plan
+# Radial Afterburn Dubstep Audio Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add fully synthesized dubstep music (intensity ramps with waves) and synthesized sound effects to the Neon Vortex tube shooter, with player controls for music/SFX/volume/mute.
+**Goal:** Add fully synthesized dubstep music (intensity ramps with waves) and synthesized sound effects to the Radial Afterburn tube shooter, with player controls for music/SFX/volume/mute.
 
 **Architecture:** `GameState` accumulates discrete `GameAudioEvent` values during simulation; `Renderer` drains them each frame and forwards them plus a continuous intensity snapshot to an `@MainActor` `AudioEngine` facade. The facade owns one `AVAudioSourceNode` whose real-time render block drives a `Synth` DSP core (sequenced wobble bass + drums + SFX voice pool). Main thread and audio thread communicate through a single `OSAllocatedUnfairLock`-guarded command queue. `GameState` stays pure (no AVFoundation), so the simulation and DSP are unit-testable with no audio hardware.
 
@@ -15,7 +15,7 @@
 - Audio is **non-fatal**: `AudioEngine` catches all setup/start failures and degrades to a silent no-op. Nothing in `Renderer` / `MetalGameView` init may depend on audio succeeding.
 - **No `import AVFoundation` in `GameState.swift`** — keeps the simulation hardware-free and CI-safe.
 - The audio render block is `nonisolated`, touches zero `MainActor` state, allocates nothing in the per-sample loop, and only locks briefly at the top to drain commands.
-- Test framework is Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect`) — match `Tests/NeonVortexTests/GameStateTests.swift`.
+- Test framework is Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect`) — match `Tests/RadialAfterburnTests/GameStateTests.swift`.
 
 ---
 
@@ -24,9 +24,9 @@
 Adds the pure event seam: an enum, an accumulation buffer on `GameState`, a drain method, and emission at every gameplay site. No audio code. Fully unit-tested.
 
 **Files:**
-- Create: `Sources/NeonVortex/GameAudioEvent.swift`
-- Modify: `Sources/NeonVortex/GameState.swift`
-- Test: `Tests/NeonVortexTests/GameStateAudioEventsTests.swift`
+- Create: `Sources/RadialAfterburn/GameAudioEvent.swift`
+- Modify: `Sources/RadialAfterburn/GameState.swift`
+- Test: `Tests/RadialAfterburnTests/GameStateAudioEventsTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -37,11 +37,11 @@ Adds the pure event seam: an enum, an accumulation buffer on `GameState`, a drai
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `Tests/NeonVortexTests/GameStateAudioEventsTests.swift`:
+Create `Tests/RadialAfterburnTests/GameStateAudioEventsTests.swift`:
 
 ```swift
 import Testing
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Game audio events")
 struct GameStateAudioEventsTests {
@@ -151,7 +151,7 @@ struct GameStateAudioEventsTests {
 
 - [ ] **Step 2: Add the enum and a stubbed (non-emitting) seam so tests compile and fail on assertions**
 
-Create `Sources/NeonVortex/GameAudioEvent.swift`:
+Create `Sources/RadialAfterburn/GameAudioEvent.swift`:
 
 ```swift
 enum GameAudioEvent: Equatable, Sendable {
@@ -165,7 +165,7 @@ enum GameAudioEvent: Equatable, Sendable {
 }
 ```
 
-In `Sources/NeonVortex/GameState.swift`, add the property after the `waveBanner` declaration (currently line 93, inside the `struct GameState` stored-property block):
+In `Sources/RadialAfterburn/GameState.swift`, add the property after the `waveBanner` declaration (currently line 93, inside the `struct GameState` stored-property block):
 
 ```swift
     private(set) var waveBanner: Float = 0
@@ -263,7 +263,7 @@ Expected: PASS (existing `GameStateTests` still green).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/NeonVortex/GameAudioEvent.swift Sources/NeonVortex/GameState.swift Tests/NeonVortexTests/GameStateAudioEventsTests.swift
+git add Sources/RadialAfterburn/GameAudioEvent.swift Sources/RadialAfterburn/GameState.swift Tests/RadialAfterburnTests/GameStateAudioEventsTests.swift
 git commit -m "feat: emit audio events from game state"
 ```
 
@@ -274,8 +274,8 @@ git commit -m "feat: emit audio events from game state"
 The real-time synthesizer: a sample-clocked dubstep sequencer (kick, snare, hats, wobble bass), an intensity parameter, and an SFX voice pool. Operates on a plain mono `Float` buffer so it is testable with no audio hardware. A `tanh` soft-clip guarantees output stays within `[-1, 1]`.
 
 **Files:**
-- Create: `Sources/NeonVortex/Synth.swift`
-- Test: `Tests/NeonVortexTests/SynthTests.swift`
+- Create: `Sources/RadialAfterburn/Synth.swift`
+- Test: `Tests/RadialAfterburnTests/SynthTests.swift`
 
 **Interfaces:**
 - Consumes: `GameAudioEvent`, `EnemyKind` (Task 1 / existing).
@@ -288,11 +288,11 @@ The real-time synthesizer: a sample-clocked dubstep sequencer (kick, snare, hats
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `Tests/NeonVortexTests/SynthTests.swift`:
+Create `Tests/RadialAfterburnTests/SynthTests.swift`:
 
 ```swift
 import Testing
-@testable import NeonVortex
+@testable import RadialAfterburn
 
 @Suite("Synth")
 struct SynthTests {
@@ -352,7 +352,7 @@ Expected: FAIL to build — `cannot find 'Synth' in scope`.
 
 - [ ] **Step 3: Implement the Synth**
 
-Create `Sources/NeonVortex/Synth.swift`:
+Create `Sources/RadialAfterburn/Synth.swift`:
 
 ```swift
 import Foundation
@@ -593,7 +593,7 @@ Expected: PASS (all 4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/Synth.swift Tests/NeonVortexTests/SynthTests.swift
+git add Sources/RadialAfterburn/Synth.swift Tests/RadialAfterburnTests/SynthTests.swift
 git commit -m "feat: add procedural dubstep synth core"
 ```
 
@@ -604,7 +604,7 @@ git commit -m "feat: add procedural dubstep synth core"
 Wraps `AVAudioEngine` + one `AVAudioSourceNode` around the `Synth`. Bridges main-thread control calls into `Synth.push`. All setup is non-fatal: on failure the facade becomes a silent no-op. There is no unit test (it needs audio hardware and is excluded from CI); it is verified by `swift build` and a manual run.
 
 **Files:**
-- Create: `Sources/NeonVortex/AudioEngine.swift`
+- Create: `Sources/RadialAfterburn/AudioEngine.swift`
 - Modify: `Package.swift`
 
 **Interfaces:**
@@ -633,7 +633,7 @@ In `Package.swift`, add the framework to the executable target's `linkerSettings
 
 - [ ] **Step 2: Implement the facade**
 
-Create `Sources/NeonVortex/AudioEngine.swift`:
+Create `Sources/RadialAfterburn/AudioEngine.swift`:
 
 ```swift
 import AVFoundation
@@ -651,7 +651,7 @@ final class AudioEngine {
     private var sfxOn = true
     private var muted = false
 
-    private let log = Logger(subsystem: "NeonVortex", category: "audio")
+    private let log = Logger(subsystem: "RadialAfterburn", category: "audio")
 
     init() {
         let hardwareRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
@@ -752,7 +752,7 @@ Expected: builds with no errors or warnings.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add Package.swift Sources/NeonVortex/AudioEngine.swift
+git add Package.swift Sources/RadialAfterburn/AudioEngine.swift
 git commit -m "feat: add AVFoundation audio engine facade"
 ```
 
@@ -763,7 +763,7 @@ git commit -m "feat: add AVFoundation audio engine facade"
 `Renderer` owns the `AudioEngine`, drains `GameState` audio events each frame, and pushes them plus the intensity snapshot. Verified by `swift build`, the full test suite (no regressions), and a manual run that produces sound.
 
 **Files:**
-- Modify: `Sources/NeonVortex/Renderer.swift`
+- Modify: `Sources/RadialAfterburn/Renderer.swift`
 
 **Interfaces:**
 - Consumes: `AudioEngine` (Task 3), `GameState.drainAudioEvents()` (Task 1).
@@ -771,7 +771,7 @@ git commit -m "feat: add AVFoundation audio engine facade"
 
 - [ ] **Step 1: Add the audio engine property**
 
-In `Sources/NeonVortex/Renderer.swift`, add the stored property next to `var game = GameState()` (currently line 21):
+In `Sources/RadialAfterburn/Renderer.swift`, add the stored property next to `var game = GameState()` (currently line 21):
 
 ```swift
     var game = GameState()
@@ -805,13 +805,13 @@ Expected: PASS (all suites — no regressions; tests never construct `Renderer`/
 
 - [ ] **Step 4: Manual smoke check**
 
-Run: `swift run NeonVortex`
+Run: `swift run RadialAfterburn`
 Expected: window opens, a low idle wobble loop is audible on the title screen; pressing Return starts the game and firing produces zap blips, kills produce explosion booms, and the music intensifies on later waves. Close the window to exit.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/Renderer.swift
+git add Sources/RadialAfterburn/Renderer.swift
 git commit -m "feat: drive audio from the render loop"
 ```
 
@@ -822,15 +822,15 @@ git commit -m "feat: drive audio from the render loop"
 Adds keyboard controls (M music, N SFX, `[`/`]` volume, `\` mute) in `MetalGameView` and a second help-bar line in `main.swift`.
 
 **Files:**
-- Modify: `Sources/NeonVortex/MetalGameView.swift`
-- Modify: `Sources/NeonVortex/main.swift`
+- Modify: `Sources/RadialAfterburn/MetalGameView.swift`
+- Modify: `Sources/RadialAfterburn/main.swift`
 
 **Interfaces:**
 - Consumes: `Renderer.audio` (Task 4) — `toggleMusic()`, `toggleSFX()`, `nudgeVolume(_:)`, `toggleMute()`.
 
 - [ ] **Step 1: Handle the audio control keys**
 
-In `Sources/NeonVortex/MetalGameView.swift`, add cases to the `switch event.keyCode` block inside `keyDown(with:)` (after the existing `case 53:` / before `default:`):
+In `Sources/RadialAfterburn/MetalGameView.swift`, add cases to the `switch event.keyCode` block inside `keyDown(with:)` (after the existing `case 53:` / before `default:`):
 
 ```swift
         case 53:
@@ -853,7 +853,7 @@ In `Sources/NeonVortex/MetalGameView.swift`, add cases to the `switch event.keyC
 
 - [ ] **Step 2: Extend the help bar to two lines**
 
-In `Sources/NeonVortex/main.swift`, change the `helpLabel` initializer (currently line 9):
+In `Sources/RadialAfterburn/main.swift`, change the `helpLabel` initializer (currently line 9):
 
 ```swift
     private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE\nM  MUSIC   N  SFX   [ / ]  VOLUME   \\  MUTE")
@@ -876,13 +876,13 @@ Expected: PASS (no regressions).
 
 - [ ] **Step 4: Manual smoke check**
 
-Run: `swift run NeonVortex`
+Run: `swift run RadialAfterburn`
 Expected: the help bar shows two lines including the audio controls. During play: `M` toggles the music layer, `N` toggles SFX, `[` / `]` lower/raise volume, `\` mutes/unmutes everything. Close the window to exit.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/NeonVortex/MetalGameView.swift Sources/NeonVortex/main.swift
+git add Sources/RadialAfterburn/MetalGameView.swift Sources/RadialAfterburn/main.swift
 git commit -m "feat: add keyboard audio controls and help text"
 ```
 
