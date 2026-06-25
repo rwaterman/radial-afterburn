@@ -37,7 +37,7 @@ final class Renderer {
         self.linePipeline = try Renderer.makeLinePipeline(device: device, library: library, format: colorPixelFormat)
     }
 
-    static func makeLinePipeline(device: MTLDevice, library: MTLLibrary, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
+    private static func makeLinePipeline(device: MTLDevice, library: MTLLibrary, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
         let d = MTLRenderPipelineDescriptor()
         d.vertexFunction = library.makeFunction(name: "neonLineVertex")
         d.fragmentFunction = library.makeFunction(name: "neonLineFragment")
@@ -112,7 +112,6 @@ final class Renderer {
 
     // MARK: - Shared encode
 
-    @discardableResult
     private func encode(pass: MTLRenderPassDescriptor, size: SIMD2<Float>, time: Float) -> MTLCommandBuffer? {
         guard let cb = commandQueue.makeCommandBuffer(),
               let encoder = cb.makeRenderCommandEncoder(descriptor: pass) else { return nil }
