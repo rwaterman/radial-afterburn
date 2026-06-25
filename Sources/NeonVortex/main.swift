@@ -140,6 +140,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+let arguments = CommandLine.arguments
+if let idx = arguments.firstIndex(of: "--screenshot") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "/tmp/nv.png"
+    func intArg(_ name: String, _ def: Int) -> Int {
+        guard let i = arguments.firstIndex(of: name), i + 1 < arguments.count, let v = Int(arguments[i + 1]) else { return def }
+        return v
+    }
+    let frames = intArg("--frames", 90)
+    let width = intArg("--width", 1100)
+    let height = intArg("--height", 760)
+    let ok = MainActor.assumeIsolated { runScreenshot(path: path, frames: frames, width: width, height: height) }
+    exit(ok ? 0 : 1)
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

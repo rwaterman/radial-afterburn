@@ -20,7 +20,7 @@ final class MetalGameView: MTKView, MTKViewDelegate {
         enableSetNeedsDisplay = false
         isPaused = false
         framebufferOnly = true
-        renderer = try Renderer(view: self)
+        renderer = try Renderer(device: device, colorPixelFormat: colorPixelFormat)
         delegate = self
         inputTimer = Timer.scheduledTimer(withTimeInterval: 1 / 120, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
