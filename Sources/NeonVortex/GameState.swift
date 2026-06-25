@@ -72,7 +72,7 @@ struct Shockwave: Identifiable {
 }
 
 struct GameState {
-    static let laneCount = 16
+    static let laneCount = TunnelGeometry.laneCount
 
     private(set) var phase: GamePhase = .title
     private(set) var playerLane = 0
