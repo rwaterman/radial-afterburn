@@ -40,6 +40,13 @@ final class Renderer {
     private var depthTexture: MTLTexture?
     private let depthWriteState: MTLDepthStencilState
     private let depthTestState: MTLDepthStencilState
+    private var sceneHDR: MTLTexture?
+    private var bloomA: MTLTexture?
+    private var bloomB: MTLTexture?
+    private let brightPipeline: MTLRenderPipelineState
+    private let blurPipeline: MTLRenderPipelineState
+    private let compositePipeline: MTLRenderPipelineState
+    private static let hdrFormat: MTLPixelFormat = .rgba16Float
 
     var game = GameState()
     var onHUDUpdate: ((GameState) -> Void)?
@@ -58,9 +65,12 @@ final class Renderer {
         testDesc.depthCompareFunction = .lessEqual
         testDesc.isDepthWriteEnabled = false
         self.depthTestState = device.makeDepthStencilState(descriptor: testDesc)!
-        self.linePipeline = try Renderer.makeLinePipeline(device: device, library: library, format: colorPixelFormat)
-        self.texturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: colorPixelFormat, additive: false)
-        self.additiveTexturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: colorPixelFormat, additive: true)
+        self.linePipeline = try Renderer.makeLinePipeline(device: device, library: library, format: Renderer.hdrFormat)
+        self.texturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: Renderer.hdrFormat, additive: false)
+        self.additiveTexturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: Renderer.hdrFormat, additive: true)
+        self.brightPipeline = try Renderer.makePostPipeline(device: device, library: library, fragment: "brightPassFragment", format: Renderer.hdrFormat)
+        self.blurPipeline = try Renderer.makePostPipeline(device: device, library: library, fragment: "blurFragment", format: Renderer.hdrFormat)
+        self.compositePipeline = try Renderer.makePostPipeline(device: device, library: library, fragment: "compositeFragment", format: colorPixelFormat)
         self.panelTexture = TextureFactory.neonPanel(device: device)
         self.glowTexture = TextureFactory.glowDot(device: device)
         self.ringTexture = TextureFactory.ringGlow(device: device)
@@ -100,6 +110,14 @@ final class Renderer {
         return try device.makeRenderPipelineState(descriptor: d)
     }
 
+    static func makePostPipeline(device: MTLDevice, library: MTLLibrary, fragment: String, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
+        let d = MTLRenderPipelineDescriptor()
+        d.vertexFunction = library.makeFunction(name: "fullscreenVertex")
+        d.fragmentFunction = library.makeFunction(name: fragment)
+        d.colorAttachments[0].pixelFormat = format
+        return try device.makeRenderPipelineState(descriptor: d)
+    }
+
     private func uniforms(size: SIMD2<Float>, time: Float) -> FrameUniforms {
         let aspect = size.x / max(size.y, 1)
         let proj = perspectiveMatrix(fovyRadians: 55 * .pi / 180, aspect: aspect, near: 0.5, far: 60)
@@ -121,14 +139,8 @@ final class Renderer {
         lastFrameTime = now
         game.update(deltaTime: dt)
 
-        guard let drawable = view.currentDrawable,
-              let pass = view.currentRenderPassDescriptor,
-              let size = optionalSize(view.drawableSize) else { return }
-
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = clearColor()
-
-        if let cb = encode(pass: pass, size: size, time: Float(now - startTime)) {
+        guard let drawable = view.currentDrawable, let size = optionalSize(view.drawableSize) else { return }
+        if let cb = encodeFrame(finalTarget: drawable.texture, finalLoad: .dontCare, size: size, time: Float(now - startTime)) {
             cb.present(drawable)
             cb.commit()
         }
@@ -144,13 +156,7 @@ final class Renderer {
         desc.storageMode = .shared
         guard let target = device.makeTexture(descriptor: desc) else { return [] }
 
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = target
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].storeAction = .store
-        pass.colorAttachments[0].clearColor = clearColor()
-
-        let cb = encode(pass: pass, size: SIMD2(Float(width), Float(height)), time: Float(CACurrentMediaTime() - startTime))
+        let cb = encodeFrame(finalTarget: target, finalLoad: .clear, size: SIMD2(Float(width), Float(height)), time: Float(CACurrentMediaTime() - startTime))
         cb?.commit()
         cb?.waitUntilCompleted()
 
@@ -172,17 +178,78 @@ final class Renderer {
         return t
     }
 
-    private func encode(pass: MTLRenderPassDescriptor, size: SIMD2<Float>, time: Float) -> MTLCommandBuffer? {
-        let depth = depthAttachment(width: Int(size.x), height: Int(size.y))
-        pass.depthAttachment.texture = depth
-        pass.depthAttachment.loadAction = .clear
-        pass.depthAttachment.clearDepth = 1.0
-        pass.depthAttachment.storeAction = .dontCare
-        guard let cb = commandQueue.makeCommandBuffer(),
-              let encoder = cb.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        encodeScene(encoder: encoder, size: size, time: time)
-        encoder.endEncoding()
+    private func hdrTextures(width: Int, height: Int) -> (scene: MTLTexture, a: MTLTexture, b: MTLTexture) {
+        func make(_ w: Int, _ h: Int) -> MTLTexture {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Renderer.hdrFormat, width: max(w, 1), height: max(h, 1), mipmapped: false)
+            d.usage = [.renderTarget, .shaderRead]
+            d.storageMode = .private
+            return device.makeTexture(descriptor: d)!
+        }
+        if let s = sceneHDR, s.width == width, s.height == height, let a = bloomA, let b = bloomB {
+            return (s, a, b)
+        }
+        let s = make(width, height); let a = make(width / 2, height / 2); let b = make(width / 2, height / 2)
+        sceneHDR = s; bloomA = a; bloomB = b
+        return (s, a, b)
+    }
+
+    @discardableResult
+    private func encodeFrame(finalTarget: MTLTexture, finalLoad: MTLLoadAction, size: SIMD2<Float>, time: Float) -> MTLCommandBuffer? {
+        let width = Int(size.x), height = Int(size.y)
+        let (scene, a, b) = hdrTextures(width: width, height: height)
+        guard let cb = commandQueue.makeCommandBuffer() else { return nil }
+
+        // Scene pass -> HDR (with depth)
+        let scenePass = MTLRenderPassDescriptor()
+        scenePass.colorAttachments[0].texture = scene
+        scenePass.colorAttachments[0].loadAction = .clear
+        scenePass.colorAttachments[0].storeAction = .store
+        scenePass.colorAttachments[0].clearColor = clearColor()
+        let depth = depthAttachment(width: width, height: height)
+        scenePass.depthAttachment.texture = depth
+        scenePass.depthAttachment.loadAction = .clear
+        scenePass.depthAttachment.clearDepth = 1.0
+        scenePass.depthAttachment.storeAction = .dontCare
+        if let enc = cb.makeRenderCommandEncoder(descriptor: scenePass) {
+            encodeScene(encoder: enc, size: size, time: time)
+            enc.endEncoding()
+        }
+
+        // Bright pass: scene -> a
+        postPass(cb: cb, pipeline: brightPipeline, target: a, source0: scene) { _ in }
+        // Blur horizontal a -> b, vertical b -> a
+        postPass(cb: cb, pipeline: blurPipeline, target: b, source0: a) { enc in
+            var dir = SIMD2<Float>(1, 0); enc.setFragmentBytes(&dir, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
+        }
+        postPass(cb: cb, pipeline: blurPipeline, target: a, source0: b) { enc in
+            var dir = SIMD2<Float>(0, 1); enc.setFragmentBytes(&dir, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
+        }
+        // Composite scene + bloom(a) -> final
+        let comp = MTLRenderPassDescriptor()
+        comp.colorAttachments[0].texture = finalTarget
+        comp.colorAttachments[0].loadAction = finalLoad
+        comp.colorAttachments[0].storeAction = .store
+        if let enc = cb.makeRenderCommandEncoder(descriptor: comp) {
+            enc.setRenderPipelineState(compositePipeline)
+            enc.setFragmentTexture(scene, index: 0)
+            enc.setFragmentTexture(a, index: 1)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            enc.endEncoding()
+        }
         return cb
+    }
+
+    private func postPass(cb: MTLCommandBuffer, pipeline: MTLRenderPipelineState, target: MTLTexture, source0: MTLTexture, configure: (MTLRenderCommandEncoder) -> Void) {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        guard let enc = cb.makeRenderCommandEncoder(descriptor: pass) else { return }
+        enc.setRenderPipelineState(pipeline)
+        enc.setFragmentTexture(source0, index: 0)
+        configure(enc)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
     }
 
     /// Scene contents. Extended by Tasks 5-9.
