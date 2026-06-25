@@ -5,7 +5,7 @@ import simd
 /// near rim (`depth 0`, z = nearZ) to the far vanishing point (`depth 1`, z = farZ).
 /// Perspective foreshortening — not a per-depth radius shrink — makes far rings small.
 enum TunnelGeometry {
-    static let laneCount = 16
+    static let laneCount: Int = 16
     static let nearZ: Float = -1.6
     static let farZ: Float = -16
     static let radius: Float = 0.95

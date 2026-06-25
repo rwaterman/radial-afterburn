@@ -11,14 +11,18 @@ struct TunnelGeometryTests {
         #expect(TunnelGeometry.depthZ(1) == TunnelGeometry.farZ)
     }
 
-    @Test("World ring radius is constant across depth (perspective does the shrinking)")
+    @Test("World ring radius is constant from the ring center (perspective does the shrinking)")
     func radiusConstant() {
-        let near = TunnelGeometry.worldPoint(lane: 3, depth: 0)
-        let far = TunnelGeometry.worldPoint(lane: 3, depth: 1)
-        let rNear = length(SIMD2(near.x, near.y))
-        let rFar = length(SIMD2(far.x, far.y))
-        #expect(abs(rNear - rFar) < 0.02)
-        #expect(abs(rNear - TunnelGeometry.radius) < 0.02)
+        for wave in [0, 1, 5] {
+            for depth in [Float(0), 0.5, 1] {
+                let center = SIMD2<Float>(sin(Float(wave) * 0.31) * 0.05, cos(Float(wave) * 0.23) * 0.04) * depth
+                for lane in 0..<TunnelGeometry.laneCount {
+                    let p = TunnelGeometry.worldPoint(lane: lane, depth: depth, wave: wave)
+                    let r = length(SIMD2(p.x, p.y) - center)
+                    #expect(abs(r - TunnelGeometry.radius) < 1e-4)
+                }
+            }
+        }
     }
 
     @Test("Lane index wraps: laneCount == lane 0")
