@@ -42,4 +42,45 @@ vertex LineRaster neonLineVertex(
 fragment float4 neonLineFragment(LineRaster in [[stage_in]]) {
     return in.color;
 }
+
+struct TexVertex {
+    float3 position;
+    float2 uv;
+    float4 color;
+};
+
+struct TexRaster {
+    float4 position [[position]];
+    float2 uv;
+    float4 color;
+    float viewZ;
+};
+
+vertex TexRaster texturedVertex(
+    uint vertexID [[vertex_id]],
+    const device TexVertex *vertices [[buffer(0)]],
+    constant Uniforms &u [[buffer(1)]]
+) {
+    TexRaster out;
+    float4 world = float4(vertices[vertexID].position, 1.0);
+    out.position = u.viewProjection * world;
+    out.uv = vertices[vertexID].uv;
+    out.color = vertices[vertexID].color;
+    out.viewZ = world.z;
+    return out;
+}
+
+fragment float4 texturedFragment(
+    TexRaster in [[stage_in]],
+    texture2d<float> tex [[texture(0)]],
+    constant Uniforms &u [[buffer(1)]]
+) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    float4 sampled = tex.sample(s, in.uv);
+    float4 lit = sampled * in.color;
+    float fog = fogFactor(in.viewZ, u.fogStart, u.fogEnd);
+    lit.rgb *= (1.0 - fog);
+    lit.a *= (1.0 - fog);
+    return lit;
+}
 """

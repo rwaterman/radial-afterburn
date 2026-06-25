@@ -7,6 +7,12 @@ struct LineVertex {
     var color: SIMD4<Float>
 }
 
+struct TexVertex {
+    var position: SIMD3<Float>
+    var uv: SIMD2<Float>
+    var color: SIMD4<Float>
+}
+
 struct FrameUniforms {
     var viewProjection: matrix_float4x4
     var time: Float
@@ -21,6 +27,8 @@ final class Renderer {
     private let commandQueue: MTLCommandQueue
     private let colorPixelFormat: MTLPixelFormat
     private let linePipeline: MTLRenderPipelineState
+    private let texturedPipeline: MTLRenderPipelineState
+    private let panelTexture: MTLTexture
     private let library: MTLLibrary
     private var lastFrameTime = CACurrentMediaTime()
     private var startTime = CACurrentMediaTime()
@@ -35,6 +43,8 @@ final class Renderer {
         self.colorPixelFormat = colorPixelFormat
         self.library = try device.makeLibrary(source: metalShaderSource, options: nil)
         self.linePipeline = try Renderer.makeLinePipeline(device: device, library: library, format: colorPixelFormat)
+        self.texturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: colorPixelFormat, additive: false)
+        self.panelTexture = TextureFactory.neonPanel(device: device)
     }
 
     private static func makeLinePipeline(device: MTLDevice, library: MTLLibrary, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
@@ -45,6 +55,19 @@ final class Renderer {
         d.colorAttachments[0].isBlendingEnabled = true
         d.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
         d.colorAttachments[0].destinationRGBBlendFactor = .one
+        d.colorAttachments[0].sourceAlphaBlendFactor = .one
+        d.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        return try device.makeRenderPipelineState(descriptor: d)
+    }
+
+    private static func makeTexturedPipeline(device: MTLDevice, library: MTLLibrary, format: MTLPixelFormat, additive: Bool) throws -> MTLRenderPipelineState {
+        let d = MTLRenderPipelineDescriptor()
+        d.vertexFunction = library.makeFunction(name: "texturedVertex")
+        d.fragmentFunction = library.makeFunction(name: "texturedFragment")
+        d.colorAttachments[0].pixelFormat = format
+        d.colorAttachments[0].isBlendingEnabled = true
+        d.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        d.colorAttachments[0].destinationRGBBlendFactor = additive ? .one : .oneMinusSourceAlpha
         d.colorAttachments[0].sourceAlphaBlendFactor = .one
         d.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         return try device.makeRenderPipelineState(descriptor: d)
@@ -120,19 +143,18 @@ final class Renderer {
         return cb
     }
 
-    /// Scene contents. Extended by Tasks 5-9. Task 4 draws one neon test triangle.
+    /// Scene contents. Extended by Tasks 5-9.
     func encodeScene(encoder: MTLRenderCommandEncoder, size: SIMD2<Float>, time: Float) {
         var u = uniforms(size: size, time: time)
-        let verts: [LineVertex] = [
-            LineVertex(position: SIMD3(-0.6, -0.4, -3), color: SIMD4(0.1, 1, 0.95, 1)),
-            LineVertex(position: SIMD3(0.6, -0.4, -3), color: SIMD4(1, 0.1, 0.6, 1)),
-            LineVertex(position: SIMD3(0, 0.6, -3), color: SIMD4(0.2, 0.6, 1, 1)),
-        ]
-        guard let buf = device.makeBuffer(bytes: verts, length: MemoryLayout<LineVertex>.stride * verts.count) else { return }
-        encoder.setRenderPipelineState(linePipeline)
-        encoder.setVertexBuffer(buf, offset: 0, index: 0)
-        encoder.setVertexBytes(&u, length: MemoryLayout<FrameUniforms>.stride, index: 1)
-        encoder.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: verts.count)
+        let panels = TunnelMesh.wallPanels(rings: 24, time: time, kick: game.tunnelKick, wave: game.wave)
+        if let buf = device.makeBuffer(bytes: panels, length: MemoryLayout<TexVertex>.stride * panels.count) {
+            encoder.setRenderPipelineState(texturedPipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBytes(&u, length: MemoryLayout<FrameUniforms>.stride, index: 1)
+            encoder.setFragmentBytes(&u, length: MemoryLayout<FrameUniforms>.stride, index: 1)
+            encoder.setFragmentTexture(panelTexture, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: panels.count)
+        }
     }
 
     private func clearColor() -> MTLClearColor {
