@@ -291,7 +291,7 @@ final class Renderer {
             for enemy in game.enemies where enemy.kind == kind {
                 let center = TunnelGeometry.worldPoint(lane: enemy.lane, depth: enemy.depth, time: t, wave: game.wave, kick: game.tunnelKick)
                 let flicker = 0.78 + sin(t * 18 + enemy.phase * 9) * 0.2
-                verts += SpriteBatch.billboard(center: center, size: 0.22, color: enemyColor(kind) * SIMD4(1, 1, 1, flicker))
+                verts += SpriteBatch.billboard(center: center, size: 0.22, color: enemyColor(kind) * SIMD4(1.7, 1.7, 1.7, flicker))
             }
             drawSprites(verts, texture: tex, uniforms: &u, encoder: encoder)
         }

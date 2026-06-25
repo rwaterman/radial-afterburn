@@ -99,8 +99,11 @@ fragment float4 brightPassFragment(FSOut in [[stage_in]], texture2d<float> scene
     constexpr sampler s(filter::linear);
     float4 c = scene.sample(s, in.uv);
     float luma = dot(c.rgb, float3(0.299, 0.587, 0.114));
-    float t = 0.9;
-    return luma > t ? c : float4(0, 0, 0, 1);
+    // Threshold below the neon edge luma (~0.7) so the wireframe and sprites bloom,
+    // with a soft knee so contribution ramps in rather than hard-cutting.
+    float t = 0.45;
+    float knee = smoothstep(t, t + 0.25, luma);
+    return float4(c.rgb * knee, 1);
 }
 
 struct BlurParams { float2 direction; };
@@ -120,8 +123,11 @@ fragment float4 blurFragment(FSOut in [[stage_in]], texture2d<float> src [[textu
 
 fragment float4 compositeFragment(FSOut in [[stage_in]], texture2d<float> scene [[texture(0)]], texture2d<float> bloom [[texture(1)]]) {
     constexpr sampler s(filter::linear);
-    float3 c = scene.sample(s, in.uv).rgb + bloom.sample(s, in.uv).rgb * 1.2;
-    c = c / (c + 1.0); // Reinhard tonemap
+    float3 hdr = scene.sample(s, in.uv).rgb + bloom.sample(s, in.uv).rgb * 1.5;
+    // Exposure curve that keeps blacks black but lifts the neon toward full
+    // brightness (Reinhard c/(c+1) crushed the ~1.0 neon to 0.5 and looked muted).
+    float exposure = 1.9;
+    float3 c = 1.0 - exp(-hdr * exposure);
     return float4(c, 1);
 }
 """
