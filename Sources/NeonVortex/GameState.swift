@@ -53,8 +53,8 @@ struct MuzzleFlash: Identifiable {
 
 struct Spark: Identifiable {
     let id: UUID
-    var position: SIMD2<Float>
-    var velocity: SIMD2<Float>
+    var position: SIMD3<Float>
+    var velocity: SIMD3<Float>
     var life: Float
     var initialLife: Float
     var scale: Float
@@ -63,7 +63,7 @@ struct Spark: Identifiable {
 
 struct Shockwave: Identifiable {
     let id: UUID
-    var position: SIMD2<Float>
+    var position: SIMD3<Float>
     var radius: Float
     var speed: Float
     var life: Float
@@ -210,9 +210,9 @@ struct GameState {
             tunnelKick = min(1, tunnelKick + 0.7)
             waveBanner = 1.25
             emitShockwave(
-                position: SIMD2<Float>(0, 0),
-                radius: 0.08,
-                speed: 1.65,
+                position: SIMD3<Float>(0, 0, TunnelGeometry.depthZ(0.5)),
+                radius: 0.12,
+                speed: 2.4,
                 life: 0.8,
                 color: SIMD4(0.2, 1, 0.95, 1)
             )
@@ -313,7 +313,7 @@ struct GameState {
     }
 
     private mutating func emitExplosion(lane: Int, depth: Float, kind: EnemyKind) {
-        let origin = tunnelPoint(lane: lane, depth: depth)
+        let origin = TunnelGeometry.worldPoint(lane: lane, depth: depth, wave: wave)
         let color: SIMD4<Float>
         switch kind {
         case .spike: color = SIMD4(1, 0.18, 0.55, 1)
@@ -349,14 +349,15 @@ struct GameState {
 
         for index in 0..<sparkCount {
             let angle = random.nextFloat() * .pi * 2
-            let speed = 0.12 + random.nextFloat() * (kind == .tanker ? 0.62 : 0.42)
+            let speed = 0.18 + random.nextFloat() * (kind == .tanker ? 0.9 : 0.62)
             let life = 0.28 + random.nextFloat() * (kind == .tanker ? 0.72 : 0.52)
             let scale = 0.7 + random.nextFloat() * (index % 3 == 0 ? 1.9 : 1.1)
+            let zKick = (random.nextFloat() - 0.5) * speed * 0.6
             sparks.append(
                 Spark(
                     id: UUID(),
                     position: origin,
-                    velocity: SIMD2(cos(angle), sin(angle)) * speed,
+                    velocity: SIMD3(cos(angle) * speed, sin(angle) * speed, zKick),
                     life: life,
                     initialLife: life,
                     scale: scale,
@@ -367,7 +368,7 @@ struct GameState {
     }
 
     private mutating func emitShockwave(
-        position: SIMD2<Float>,
+        position: SIMD3<Float>,
         radius: Float,
         speed: Float,
         life: Float,

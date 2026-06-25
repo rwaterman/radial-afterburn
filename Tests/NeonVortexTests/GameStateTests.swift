@@ -120,6 +120,18 @@ struct GameStateTests {
         #expect(first.next() == second.next())
     }
 
+    @Test("Explosion sparks originate inside the tunnel's Z range")
+    func sparksAreInTunnelSpace() {
+        var game = GameState()
+        destroyFirstEnemy(in: &game)
+
+        #expect(!game.sparks.isEmpty)
+        for spark in game.sparks {
+            #expect(spark.position.z <= TunnelGeometry.nearZ + 0.01)
+            #expect(spark.position.z >= TunnelGeometry.farZ - 0.01)
+        }
+    }
+
     private func destroyFirstEnemy(in game: inout GameState) {
         game.start()
         while game.enemies.isEmpty {

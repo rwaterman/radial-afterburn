@@ -240,15 +240,17 @@ final class Renderer {
         let alpha = max(0, min(1, spark.life / spark.initialLife))
         let trail = spark.velocity * (0.06 + spark.scale * 0.035)
         let color = spark.color * SIMD4(1, 1, 1, alpha)
+        let position2D = SIMD2(spark.position.x, spark.position.y)
+        let trail2D = SIMD2(trail.x, trail.y)
         addGlowLine(
-            spark.position,
-            spark.position - trail,
+            position2D,
+            position2D - trail2D,
             color: color * SIMD4(1, 1, 1, 0.75)
         )
         if spark.scale > 1.25 {
             addLine(
-                spark.position + SIMD2<Float>(-trail.y, trail.x) * 0.08 * (1 - age),
-                spark.position + SIMD2<Float>(trail.y, -trail.x) * 0.08 * (1 - age),
+                position2D + SIMD2<Float>(-trail2D.y, trail2D.x) * 0.08 * (1 - age),
+                position2D + SIMD2<Float>(trail2D.y, -trail2D.x) * 0.08 * (1 - age),
                 color: color * SIMD4(1, 1, 1, 0.42)
             )
         }
@@ -258,8 +260,9 @@ final class Renderer {
         let alpha = max(0, min(1, shockwave.life / shockwave.initialLife))
         let wobble = 1 + sin(time * 13 + shockwave.radius * 11) * 0.04
         let color = shockwave.color * SIMD4(1, 1, 1, alpha * 0.82)
-        addRing(center: shockwave.position, radius: shockwave.radius * wobble, segments: 32, color: color)
-        addRing(center: shockwave.position, radius: shockwave.radius * (1.12 + (1 - alpha) * 0.18), segments: 32, color: color * SIMD4(1, 1, 1, 0.35))
+        let position2D = SIMD2(shockwave.position.x, shockwave.position.y)
+        addRing(center: position2D, radius: shockwave.radius * wobble, segments: 32, color: color)
+        addRing(center: position2D, radius: shockwave.radius * (1.12 + (1 - alpha) * 0.18), segments: 32, color: color * SIMD4(1, 1, 1, 0.35))
     }
 
     private func addRing(center: SIMD2<Float>, radius: Float, segments: Int, color: SIMD4<Float>) {
