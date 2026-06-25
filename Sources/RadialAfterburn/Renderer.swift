@@ -226,6 +226,23 @@ final class Renderer {
             }
             drawSprites(verts, texture: tex, uniforms: &u, encoder: encoder)
         }
+
+        // Pass C (cont): shots as bright glow billboards
+        var shotVerts: [TexVertex] = []
+        for shot in game.shots {
+            let center = TunnelGeometry.worldPoint(lane: shot.lane, depth: shot.depth, time: t, wave: game.wave, kick: game.tunnelKick)
+            shotVerts += SpriteBatch.billboard(center: center, size: 0.25, color: SIMD4(1, 0.95, 0.25, 1))
+        }
+        drawSprites(shotVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
+
+        // Muzzle flashes at the firing lane near the rim
+        var muzzleVerts: [TexVertex] = []
+        for flash in game.muzzleFlashes {
+            let amount = max(0, min(1, flash.life / flash.initialLife))
+            let center = TunnelGeometry.worldPoint(lane: flash.lane, depth: 0.05, time: t, wave: game.wave, kick: game.tunnelKick)
+            muzzleVerts += SpriteBatch.billboard(center: center, size: 0.08 + 0.1 * (1 - amount), color: SIMD4(1, 0.9, 0.3, amount))
+        }
+        drawSprites(muzzleVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
     }
 
     private func drawSprites(_ verts: [TexVertex], texture: MTLTexture, uniforms u: inout FrameUniforms, encoder: MTLRenderCommandEncoder) {
