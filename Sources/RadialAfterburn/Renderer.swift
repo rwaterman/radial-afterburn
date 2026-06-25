@@ -31,6 +31,7 @@ final class Renderer {
     private let additiveTexturedPipeline: MTLRenderPipelineState
     private let panelTexture: MTLTexture
     private let glowTexture: MTLTexture
+    private let ringTexture: MTLTexture
     private let playerTexture: MTLTexture
     private var enemyTextures: [EnemyKind: MTLTexture] = [:]
     private let library: MTLLibrary
@@ -62,6 +63,7 @@ final class Renderer {
         self.additiveTexturedPipeline = try Renderer.makeTexturedPipeline(device: device, library: library, format: colorPixelFormat, additive: true)
         self.panelTexture = TextureFactory.neonPanel(device: device)
         self.glowTexture = TextureFactory.glowDot(device: device)
+        self.ringTexture = TextureFactory.ringGlow(device: device)
         self.playerTexture = TextureFactory.playerSprite(device: device)
         self.enemyTextures = [
             .spike: TextureFactory.sprite(device: device, kind: .spike),
@@ -243,6 +245,22 @@ final class Renderer {
             muzzleVerts += SpriteBatch.billboard(center: center, size: 0.08 + 0.1 * (1 - amount), color: SIMD4(1, 0.9, 0.3, amount))
         }
         drawSprites(muzzleVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
+
+        // Pass D: sparks (additive glow billboards in 3D)
+        var sparkVerts: [TexVertex] = []
+        for spark in game.sparks {
+            let alpha = max(0, min(1, spark.life / spark.initialLife))
+            sparkVerts += SpriteBatch.billboard(center: spark.position, size: 0.05 * spark.scale, color: spark.color * SIMD4(1, 1, 1, alpha))
+        }
+        drawSprites(sparkVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
+
+        // Shockwaves: expanding ring billboards
+        var ringVerts: [TexVertex] = []
+        for wave in game.shockwaves {
+            let alpha = max(0, min(1, wave.life / wave.initialLife))
+            ringVerts += SpriteBatch.billboard(center: wave.position, size: wave.radius, color: wave.color * SIMD4(1, 1, 1, alpha * 0.85))
+        }
+        drawSprites(ringVerts, texture: ringTexture, uniforms: &u, encoder: encoder)
     }
 
     private func drawSprites(_ verts: [TexVertex], texture: MTLTexture, uniforms u: inout FrameUniforms, encoder: MTLRenderCommandEncoder) {

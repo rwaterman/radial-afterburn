@@ -84,6 +84,23 @@ enum TextureFactory {
         return upload(device: device, pixels: pixels, size: size)
     }
 
+    /// Annular glow for shockwaves.
+    static func ringGlow(device: MTLDevice, size: Int = 128) -> MTLTexture {
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        let c = Float(size) / 2
+        for y in 0..<size {
+            for x in 0..<size {
+                let dx = (Float(x) - c) / c
+                let dy = (Float(y) - c) / c
+                let d = sqrt(dx * dx + dy * dy)
+                let a = max(0, 1 - abs(d - 0.8) / 0.2)
+                let i = (y * size + x) * 4
+                pixels[i] = toByte(a); pixels[i + 1] = toByte(a); pixels[i + 2] = toByte(a); pixels[i + 3] = toByte(a)
+            }
+        }
+        return upload(device: device, pixels: pixels, size: size)
+    }
+
     private static func shapeDiamond(_ x: Float, _ y: Float, sharp: Float) -> Float { max(0, 1 - (abs(x) + abs(y)) * sharp) }
     private static func shapeHex(_ x: Float, _ y: Float) -> Float {
         let q = max(abs(x) * 0.866 + abs(y) * 0.5, abs(y))
