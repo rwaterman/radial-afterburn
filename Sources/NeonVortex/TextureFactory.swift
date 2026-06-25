@@ -1,5 +1,4 @@
 import Metal
-import simd
 
 enum TextureFactory {
     /// Emissive neon panel: glowing grid seams over subtle value noise. Repeat-tiled.
@@ -29,20 +28,20 @@ enum TextureFactory {
         return upload(device: device, pixels: pixels, size: size)
     }
 
-    static func smoothLine(_ d: Float, _ width: Float) -> Float {
+    private static func smoothLine(_ d: Float, _ width: Float) -> Float {
         max(0, 1 - d / width)
     }
 
-    static func valueNoise(_ x: Float, _ y: Float) -> Float {
+    private static func valueNoise(_ x: Float, _ y: Float) -> Float {
         let n = sin(x * 12.9898 + y * 78.233) * 43758.5453
         return n - floor(n)
     }
 
-    static func toByte(_ v: Float) -> UInt8 {
+    private static func toByte(_ v: Float) -> UInt8 {
         UInt8(max(0, min(1, v)) * 255)
     }
 
-    static func upload(device: MTLDevice, pixels: [UInt8], size: Int) -> MTLTexture {
+    private static func upload(device: MTLDevice, pixels: [UInt8], size: Int) -> MTLTexture {
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: size, height: size, mipmapped: true)
         desc.usage = [.shaderRead]
@@ -51,13 +50,15 @@ enum TextureFactory {
             tex.replace(region: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0,
                         withBytes: raw.baseAddress!, bytesPerRow: size * 4)
         }
-        if let queue = device.makeCommandQueue(), let cb = queue.makeCommandBuffer(),
-           let blit = cb.makeBlitCommandEncoder() {
-            blit.generateMipmaps(for: tex)
-            blit.endEncoding()
-            cb.commit()
-            cb.waitUntilCompleted()
+        guard let queue = device.makeCommandQueue(),
+              let cb = queue.makeCommandBuffer(),
+              let blit = cb.makeBlitCommandEncoder() else {
+            fatalError("TextureFactory: failed to create command queue/buffer for mipmap generation")
         }
+        blit.generateMipmaps(for: tex)
+        blit.endEncoding()
+        cb.commit()
+        cb.waitUntilCompleted()
         return tex
     }
 }

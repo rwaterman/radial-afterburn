@@ -17,7 +17,7 @@ enum TunnelMesh {
             let c1 = panelColor(depth: d1)
             for lane in 0..<TunnelGeometry.laneCount {
                 let next = (lane + 1) % TunnelGeometry.laneCount
-                let uL = Float(lane) / Float(TunnelGeometry.laneCount) * Float(TunnelGeometry.laneCount)
+                let uL = Float(lane)
                 let uR = uL + 1
                 let p00 = TunnelGeometry.worldPoint(lane: lane, depth: d0, time: time, wave: wave, kick: kick)
                 let p10 = TunnelGeometry.worldPoint(lane: next, depth: d0, time: time, wave: wave, kick: kick)
@@ -33,7 +33,7 @@ enum TunnelMesh {
         return out
     }
 
-    static func panelColor(depth: Float) -> SIMD4<Float> {
+    private static func panelColor(depth: Float) -> SIMD4<Float> {
         let near = SIMD4<Float>(0.5, 0.95, 1.0, 1.0)
         let far = SIMD4<Float>(0.4, 0.2, 0.7, 1.0)
         return near * (1 - depth) + far * depth
