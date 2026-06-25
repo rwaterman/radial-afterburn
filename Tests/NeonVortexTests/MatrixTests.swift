@@ -24,6 +24,15 @@ struct MatrixTests {
         #expect(approx(c.y / c.w, 0))
     }
 
+    @Test("Perspective clips z to [0,1] — Metal convention")
+    func perspectiveZConvention() {
+        let p = perspectiveMatrix(fovyRadians: .pi / 3, aspect: 1, near: 0.1, far: 100)
+        let nearClip = p * SIMD4<Float>(0, 0, -0.1, 1)
+        let farClip  = p * SIMD4<Float>(0, 0, -100, 1)
+        #expect(approx(nearClip.z / nearClip.w, 0))
+        #expect(approx(farClip.z / farClip.w, 1))
+    }
+
     @Test("lookAt produces an orthonormal basis")
     func lookAtOrthonormal() {
         let v = lookAtMatrix(eye: SIMD3(0, 0, 0), center: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
@@ -34,6 +43,8 @@ struct MatrixTests {
         #expect(approx(length(upv), 1))
         #expect(approx(length(fwd), 1))
         #expect(approx(dot(right, upv), 0))
+        #expect(approx(dot(right, fwd), 0))
+        #expect(approx(dot(upv, fwd), 0))
     }
 
     @Test("lookAt at origin looking -Z is identity-like for forward points")

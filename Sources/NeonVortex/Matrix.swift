@@ -22,6 +22,7 @@ func lookAtMatrix(eye: SIMD3<Float>, center: SIMD3<Float>, up: SIMD3<Float>) -> 
         SIMD4<Float>(s.x, u.x, -f.x, 0),
         SIMD4<Float>(s.y, u.y, -f.y, 0),
         SIMD4<Float>(s.z, u.z, -f.z, 0),
+        // -f is the view-space Z basis, so translation z = dot(-f, -eye) = dot(f, eye)
         SIMD4<Float>(-dot(s, eye), -dot(u, eye), dot(f, eye), 1)
     ))
 }
