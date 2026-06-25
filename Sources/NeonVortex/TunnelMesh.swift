@@ -33,6 +33,27 @@ enum TunnelMesh {
         return out
     }
 
+    /// Bright neon wireframe: depth rings + radial lane lines, as line-list vertices.
+    static func edges(rings: Int, time: Float, kick: Float, wave: Int) -> [LineVertex] {
+        var out: [LineVertex] = []
+        let rim = SIMD4<Float>(0.1, 1.0, 1.0, 0.95)
+        for ring in 0...rings {
+            let d = Float(ring) / Float(rings)
+            let color = rim * SIMD4<Float>(1, 1, 1, 1 - d * 0.5)
+            for lane in 0..<TunnelGeometry.laneCount {
+                let next = (lane + 1) % TunnelGeometry.laneCount
+                out.append(LineVertex(position: TunnelGeometry.worldPoint(lane: lane, depth: d, time: time, wave: wave, kick: kick), color: color))
+                out.append(LineVertex(position: TunnelGeometry.worldPoint(lane: next, depth: d, time: time, wave: wave, kick: kick), color: color))
+            }
+        }
+        for lane in 0..<TunnelGeometry.laneCount {
+            let color = SIMD4<Float>(0.02, 0.6 + kick * 0.25, 0.94, 0.8)
+            out.append(LineVertex(position: TunnelGeometry.worldPoint(lane: lane, depth: 0, time: time, wave: wave, kick: kick), color: color))
+            out.append(LineVertex(position: TunnelGeometry.worldPoint(lane: lane, depth: 1, time: time, wave: wave, kick: kick), color: color))
+        }
+        return out
+    }
+
     private static func panelColor(depth: Float) -> SIMD4<Float> {
         let near = SIMD4<Float>(0.5, 0.95, 1.0, 1.0)
         let far = SIMD4<Float>(0.4, 0.2, 0.7, 1.0)
