@@ -1,8 +1,10 @@
 # Radial Afterburn
 
-Radial Afterburn is a small macOS tube shooter written in Swift and Metal. It draws
-everything procedurally: the tunnel, ships, particles, background, and HUD all
-come from code rather than a game engine or bundled art.
+Radial Afterburn is a small macOS tube shooter written in Swift and Metal. It
+renders a 3D perspective tunnel with texture-mapped walls, billboard sprites,
+distance fog, and a bloom post-process pass — all generated procedurally in
+code, with no game engine or bundled art. The textures, geometry, ships,
+particles, and HUD all come from code.
 
 The game is built around a 16-lane tunnel. Move around the rim, shoot down the
 lanes, and clear each wave before enemies break through to the edge.
@@ -21,6 +23,18 @@ swift run RadialAfterburn
 ```
 
 Or open `Package.swift` in Xcode and run the `RadialAfterburn` scheme.
+
+### Headless screenshot
+
+Render a single frame to a PNG without opening a window (no Screen Recording
+permission required — it renders into an offscreen texture):
+
+```sh
+swift run RadialAfterburn --screenshot out.png --frames 500 --width 1100 --height 760
+```
+
+The scene is deterministic (seeded), so a given frame count always renders the
+same image.
 
 ## Test
 
@@ -57,11 +71,15 @@ Enemy types:
 ## Project Layout
 
 - `GameState.swift`: rules, waves, scoring, collisions, and effects state
-- `Renderer.swift`: procedural geometry and Metal draw calls
+- `TunnelGeometry.swift` / `Matrix.swift`: pure projection math (unit-tested, no Metal)
+- `Renderer.swift`: orchestrates the 3D render passes (textured tunnel, sprites, particles, bloom); decoupled from `MTKView`
+- `TextureFactory.swift`: procedural textures generated in code
+- `TunnelMesh.swift` / `SpriteBatch.swift`: tunnel wall/edge and billboard geometry
+- `Shaders.swift`: runtime-compiled Metal shaders (textured-lit, neon line, bloom)
+- `Screenshot.swift`: headless `--screenshot` PNG renderer
 - `MetalGameView.swift`: input and frame timing
 - `main.swift`: AppKit window, HUD, and application setup
-- `Shaders.swift`: small runtime-compiled Metal shader
-- `Tests/RadialAfterburnTests`: simulation tests
+- `Tests/RadialAfterburnTests`: simulation and projection-math tests
 
 CI runs `swift build` and `swift test` on macOS.
 
