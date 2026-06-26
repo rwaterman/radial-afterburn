@@ -35,7 +35,7 @@ func runScreenshot(path: String, frames: Int, width: Int, height: Int) -> Bool {
         renderer.game.update(deltaTime: dt)
     }
 
-    let bgra = renderer.renderSnapshot(width: width, height: height)
+    let bgra = renderer.renderSnapshot(width: width, height: height, time: Float(total) * dt)
     guard bgra.count == width * height * 4 else { return false }
     return writePNG(bgra: bgra, width: width, height: height, path: path)
 }

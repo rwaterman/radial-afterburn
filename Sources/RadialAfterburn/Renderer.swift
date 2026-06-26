@@ -121,7 +121,12 @@ final class Renderer {
     private func uniforms(size: SIMD2<Float>, time: Float) -> FrameUniforms {
         let aspect = size.x / max(size.y, 1)
         let proj = perspectiveMatrix(fovyRadians: 55 * .pi / 180, aspect: aspect, near: 0.5, far: 60)
-        let view = lookAtMatrix(eye: SIMD3(0, 0, 0), center: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
+        // Camera jitter driven by screenShake (hits / breaches / wave clears) — translate
+        // eye and target together so the whole view shakes without changing aim.
+        let shake = game.screenShake * 0.04
+        let jx = (sin(time * 79) + sin(time * 41) * 0.5) * shake
+        let jy = (cos(time * 83) + sin(time * 57) * 0.5) * shake
+        let view = lookAtMatrix(eye: SIMD3(jx, jy, 0), center: SIMD3(jx, jy, -1), up: SIMD3(0, 1, 0))
         return FrameUniforms(
             viewProjection: proj * view,
             time: time,
@@ -149,14 +154,16 @@ final class Renderer {
 
     // MARK: - Snapshot path (renders current state, no dt advance)
 
-    func renderSnapshot(width: Int, height: Int) -> [UInt8] {
+    /// `time` drives the cosmetic warp/scroll/flicker; pass a fixed value (e.g. the
+    /// scripted scene's elapsed sim time) for a fully reproducible screenshot.
+    func renderSnapshot(width: Int, height: Int, time: Float) -> [UInt8] {
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
         desc.usage = [.renderTarget, .shaderRead]
         desc.storageMode = .shared
         guard let target = device.makeTexture(descriptor: desc) else { return [] }
 
-        let cb = encodeFrame(finalTarget: target, finalLoad: .clear, size: SIMD2(Float(width), Float(height)), time: Float(CACurrentMediaTime() - startTime))
+        let cb = encodeFrame(finalTarget: target, finalLoad: .clear, size: SIMD2(Float(width), Float(height)), time: time)
         cb?.commit()
         cb?.waitUntilCompleted()
 

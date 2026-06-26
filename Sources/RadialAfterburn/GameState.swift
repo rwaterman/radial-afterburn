@@ -403,13 +403,6 @@ struct GameState {
         }
     }
 
-    func tunnelPoint(lane: Int, depth: Float) -> SIMD2<Float> {
-        let angle = Float(lane) / Float(Self.laneCount) * .pi * 2 - .pi / 2
-        let radius = 0.91 * (1 - depth) + 0.09
-        let center = SIMD2<Float>(sin(Float(wave) * 0.31) * 0.035, cos(Float(wave) * 0.23) * 0.025)
-        return center * depth + SIMD2(cos(angle), sin(angle)) * radius
-    }
-
     private func wrappedLane(_ lane: Int) -> Int {
         (lane % Self.laneCount + Self.laneCount) % Self.laneCount
     }
