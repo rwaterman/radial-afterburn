@@ -110,7 +110,7 @@ final class Renderer {
         return try device.makeRenderPipelineState(descriptor: d)
     }
 
-    static func makePostPipeline(device: MTLDevice, library: MTLLibrary, fragment: String, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
+    private static func makePostPipeline(device: MTLDevice, library: MTLLibrary, fragment: String, format: MTLPixelFormat) throws -> MTLRenderPipelineState {
         let d = MTLRenderPipelineDescriptor()
         d.vertexFunction = library.makeFunction(name: "fullscreenVertex")
         d.fragmentFunction = library.makeFunction(name: fragment)
