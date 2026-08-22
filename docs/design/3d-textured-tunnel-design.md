@@ -1,7 +1,7 @@
 # Radial Afterburn — 3D Textured Tunnel + Bloom
 
 **Date:** 2026-06-25
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented (see `Renderer.swift`, `Shaders.swift`, `TunnelGeometry.swift`)
 
 ## Goal
 
