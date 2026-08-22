@@ -111,6 +111,29 @@ struct GameStateTests {
         #expect(game.comboPulse == 0)
     }
 
+    @Test("Player visual lane eases toward the target lane")
+    func visualLaneConverges() {
+        var game = GameState()
+        game.start()
+        game.move(1)
+        #expect(game.playerLane == 1)
+        for _ in 0..<60 { game.update(deltaTime: 1.0 / 60) }
+        #expect(abs(game.playerVisualLane - 1) < 0.01)
+    }
+
+    @Test("Visual lane slides the short way across the wrap seam")
+    func visualLaneTakesShortestArc() {
+        var game = GameState()
+        game.start()
+        game.move(-1)                       // lane 0 -> 15
+        #expect(game.playerLane == GameState.laneCount - 1)
+        game.update(deltaTime: 0.05)
+        // Should slide down through 0 into the high teens, not climb 0 -> 15.
+        #expect(game.playerVisualLane > 14)
+        #expect(game.playerVisualLane < Float(GameState.laneCount))
+        #expect(game.playerVisualLane >= 0)
+    }
+
     @Test("Seeded random is reproducible")
     func randomIsReproducible() {
         var first = SeededRandom(seed: 42)

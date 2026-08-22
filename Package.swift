@@ -16,7 +16,8 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),
-                .linkedFramework("MetalKit")
+                .linkedFramework("MetalKit"),
+                .linkedFramework("AVFoundation")
             ]
         ),
         .testTarget(

@@ -50,6 +50,8 @@ final class Renderer {
 
     var game = GameState()
     var onHUDUpdate: ((GameState) -> Void)?
+    /// Set on the live path only; nil in headless screenshot mode (no audio).
+    var audio: GameAudio?
 
     init(device: MTLDevice, colorPixelFormat: MTLPixelFormat) throws {
         guard let queue = device.makeCommandQueue() else { throw RendererError.metalUnavailable }
@@ -121,12 +123,29 @@ final class Renderer {
     private func uniforms(size: SIMD2<Float>, time: Float) -> FrameUniforms {
         let aspect = size.x / max(size.y, 1)
         let proj = perspectiveMatrix(fovyRadians: 55 * .pi / 180, aspect: aspect, near: 0.5, far: 60)
-        // Camera jitter driven by screenShake (hits / breaches / wave clears) — translate
-        // eye and target together so the whole view shakes without changing aim.
+
+        // Camera jitter driven by screenShake (hits / breaches / wave clears).
         let shake = game.screenShake * 0.04
         let jx = (sin(time * 79) + sin(time * 41) * 0.5) * shake
         let jy = (cos(time * 83) + sin(time * 57) * 0.5) * shake
-        let view = lookAtMatrix(eye: SIMD3(jx, jy, 0), center: SIMD3(jx, jy, -1), up: SIMD3(0, 1, 0))
+
+        // Eased lean toward the player's side of the rim — the eye drifts more than
+        // the look target, tilting the tube for parallax instead of a flat pan.
+        let pa = TunnelGeometry.angle(laneFraction: game.playerVisualLane)
+        let lean: Float = 0.22
+        let lx = cos(pa) * lean
+        let ly = sin(pa) * lean
+
+        // Dolly: lunge toward the tunnel mouth on a big kick (wave clear / tanker / breach).
+        let dolly = -0.6 * game.tunnelKick
+
+        // Bank the view by the player's angular velocity so quick moves feel kinetic.
+        let roll = max(-0.13, min(0.13, game.playerLaneVel * 0.02))
+        let up = SIMD3<Float>(sin(roll), cos(roll), 0)
+
+        let eye = SIMD3<Float>(jx + lx, jy + ly, dolly)
+        let center = SIMD3<Float>(jx + lx * 0.35, jy + ly * 0.35, dolly - 1)
+        let view = lookAtMatrix(eye: eye, center: center, up: up)
         return FrameUniforms(
             viewProjection: proj * view,
             time: time,
@@ -143,6 +162,8 @@ final class Renderer {
         let dt = Float(now - lastFrameTime)
         lastFrameTime = now
         game.update(deltaTime: dt)
+        audio?.handle(game.events)
+        game.drainEvents()
 
         guard let drawable = view.currentDrawable, let size = optionalSize(view.drawableSize) else { return }
         if let cb = encodeFrame(finalTarget: drawable.texture, finalLoad: .dontCare, size: size, time: Float(now - startTime)) {
@@ -262,9 +283,11 @@ final class Renderer {
     /// Scene contents. Extended by Tasks 5-9.
     func encodeScene(encoder: MTLRenderCommandEncoder, size: SIMD2<Float>, time: Float) {
         var u = uniforms(size: size, time: time)
+        let palette = Palette.forWave(game.wave)
+        let rings = 36
 
         // Pass A: textured wall panels (write depth)
-        let panels = TunnelMesh.wallPanels(rings: 24, time: time, kick: game.tunnelKick, wave: game.wave)
+        let panels = TunnelMesh.wallPanels(rings: rings, time: time, kick: game.tunnelKick, wave: game.wave, palette: palette)
         if let buf = device.makeBuffer(bytes: panels, length: MemoryLayout<TexVertex>.stride * panels.count) {
             encoder.setRenderPipelineState(texturedPipeline)
             encoder.setDepthStencilState(depthWriteState)
@@ -276,7 +299,7 @@ final class Renderer {
         }
 
         // Pass B: neon edges (test depth, no write)
-        let edges = TunnelMesh.edges(rings: 24, time: time, kick: game.tunnelKick, wave: game.wave)
+        let edges = TunnelMesh.edges(rings: rings, time: time, kick: game.tunnelKick, wave: game.wave, palette: palette)
         if let buf = device.makeBuffer(bytes: edges, length: MemoryLayout<LineVertex>.stride * edges.count) {
             encoder.setRenderPipelineState(linePipeline)
             encoder.setDepthStencilState(depthTestState)
@@ -285,9 +308,14 @@ final class Renderer {
             encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: edges.count)
         }
 
-        // Pass C: player + enemies (additive billboards, depth-tested)
         let t = time
-        let playerCenter = TunnelGeometry.worldPoint(lane: game.playerLane, depth: 0.04, time: t, wave: game.wave, kick: game.tunnelKick)
+
+        // Glowing core at the vanishing point + a streaming starfield, for depth and speed.
+        drawSprites(coreGlow(time: t, palette: palette), texture: glowTexture, uniforms: &u, encoder: encoder)
+        drawSprites(starfield(time: t, palette: palette), texture: glowTexture, uniforms: &u, encoder: encoder)
+
+        // Pass C: player + enemies (additive billboards, depth-tested)
+        let playerCenter = TunnelGeometry.worldPoint(laneFraction: game.playerVisualLane, depth: 0.04, time: t, wave: game.wave, kick: game.tunnelKick)
         let pulse = 0.85 + sin(t * 9) * 0.15
         drawSprites(SpriteBatch.billboard(center: playerCenter, size: 0.16, color: SIMD4(0.1, 1, 0.95, pulse)),
                     texture: playerTexture, uniforms: &u, encoder: encoder)
@@ -296,18 +324,23 @@ final class Renderer {
             guard let tex = enemyTextures[kind] else { continue }
             var verts: [TexVertex] = []
             for enemy in game.enemies where enemy.kind == kind {
-                let center = TunnelGeometry.worldPoint(lane: enemy.lane, depth: enemy.depth, time: t, wave: game.wave, kick: game.tunnelKick)
+                let center = TunnelGeometry.worldPoint(laneFraction: enemy.visualLane, depth: enemy.depth, time: t, wave: game.wave, kick: game.tunnelKick)
                 let flicker = 0.78 + sin(t * 18 + enemy.phase * 9) * 0.2
                 verts += SpriteBatch.billboard(center: center, size: 0.22, color: enemyColor(kind) * SIMD4(1.7, 1.7, 1.7, flicker))
             }
             drawSprites(verts, texture: tex, uniforms: &u, encoder: encoder)
         }
 
-        // Pass C (cont): shots as bright glow billboards
+        // Pass C (cont): shots as bright glow billboards with a fading trail
         var shotVerts: [TexVertex] = []
         for shot in game.shots {
-            let center = TunnelGeometry.worldPoint(lane: shot.lane, depth: shot.depth, time: t, wave: game.wave, kick: game.tunnelKick)
-            shotVerts += SpriteBatch.billboard(center: center, size: 0.25, color: SIMD4(1, 0.95, 0.25, 1))
+            for ghost in 0..<4 {
+                let gd = shot.depth - Float(ghost) * 0.035
+                guard gd > 0 else { continue }
+                let center = TunnelGeometry.worldPoint(lane: shot.lane, depth: gd, time: t, wave: game.wave, kick: game.tunnelKick)
+                let fade = (ghost == 0 ? 1 : 0.5) * (1 - Float(ghost) / 4)
+                shotVerts += SpriteBatch.billboard(center: center, size: 0.25 * (1 - Float(ghost) * 0.16), color: SIMD4(1, 0.95, 0.25, fade))
+            }
         }
         drawSprites(shotVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
 
@@ -347,6 +380,49 @@ final class Renderer {
         encoder.setFragmentBytes(&u, length: MemoryLayout<FrameUniforms>.stride, index: 1)
         encoder.setFragmentTexture(texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: verts.count)
+    }
+
+    /// Pulsing glow well down the throat of the tunnel; flares on a tunnel kick.
+    /// Stacked layers so it reads as a luminous core rather than a flat disc, and
+    /// kept nearer than the vanishing point so distance fog doesn't crush it to black.
+    private func coreGlow(time: Float, palette: WavePalette) -> [TexVertex] {
+        let pulse = 0.6 + sin(time * 2) * 0.2 + game.tunnelKick * 0.7
+        let base = (palette.rim + palette.accent) * 0.5
+        var verts: [TexVertex] = []
+        for layer in 0..<3 {
+            let depth = 0.56 + Float(layer) * 0.06
+            let size = (0.3 + Float(layer) * 0.16) * (1 + game.tunnelKick * 0.4)
+            // Scale the whole color (alpha too) hard: the fragment fogs both color and
+            // alpha, so additive contribution falls off as fog², and the core sits deep.
+            let gain = (6.0 - Float(layer) * 1.4) * max(0, pulse)
+            let center = SIMD3<Float>(0, 0, TunnelGeometry.depthZ(depth))
+            verts += SpriteBatch.billboard(center: center, size: size, color: base * gain)
+        }
+        return verts
+    }
+
+    /// Deterministic specks that stream from the core toward the camera and wrap,
+    /// giving the tube depth and a sense of speed. Derived purely from `time`, so it
+    /// stays reproducible for headless screenshots and needs no game state.
+    private func starfield(time: Float, palette: WavePalette) -> [TexVertex] {
+        var verts: [TexVertex] = []
+        let count = 90
+        let tint = palette.accent + (SIMD4<Float>(1, 1, 1, 1) - palette.accent) * 0.45
+        for i in 0..<count {
+            let fi = Float(i)
+            let angle = fi * 2.39996323  // golden angle, even angular spread
+            let speed = 0.05 + fi.truncatingRemainder(dividingBy: 7) * 0.012
+            let phase = (time * speed + fi * 0.0137).truncatingRemainder(dividingBy: 1)
+            let depth = 1 - phase                       // far (1) -> near (0)
+            let radial = 0.12 + (sin(fi * 1.7) * 0.5 + 0.5) * 0.78
+            let r = TunnelGeometry.radius * radial
+            let pos = SIMD3<Float>(cos(angle) * r, sin(angle) * r, TunnelGeometry.depthZ(depth))
+            let near = 1 - depth
+            let bright = near * near
+            verts += SpriteBatch.billboard(center: pos, size: 0.012 + bright * 0.03,
+                                           color: tint * SIMD4(1, 1, 1, 0.12 + bright * 0.85))
+        }
+        return verts
     }
 
     private func enemyColor(_ kind: EnemyKind) -> SIMD4<Float> {

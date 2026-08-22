@@ -4,6 +4,7 @@ import MetalKit
 @MainActor
 final class MetalGameView: MTKView, MTKViewDelegate {
     private(set) var renderer: Renderer?
+    private var audio: GameAudio?
     private var heldKeys = Set<UInt16>()
     private var inputTimer: Timer?
 
@@ -21,6 +22,9 @@ final class MetalGameView: MTKView, MTKViewDelegate {
         isPaused = false
         framebufferOnly = true
         renderer = try Renderer(device: device, colorPixelFormat: colorPixelFormat)
+        let audio = GameAudio()
+        self.audio = audio
+        renderer?.audio = audio
         delegate = self
         inputTimer = Timer.scheduledTimer(withTimeInterval: 1 / 120, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {

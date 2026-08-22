@@ -36,6 +36,19 @@ struct Enemy: Identifiable {
     var depth: Float
     var kind: EnemyKind
     var phase: Float
+    /// Drawn lane position, eased toward `lane` so flipper lane changes slide.
+    var visualLane: Float
+}
+
+/// One-frame gameplay events, accumulated until the renderer drains them to drive
+/// audio. Kept on `GameState` (which stays Metal/audio-free) so it remains testable.
+struct FrameEvents {
+    var shotsFired = 0
+    var explosions = 0
+    var bigExplosions = 0
+    var waveCleared = false
+    var lifeLost = false
+    var bonusLife = false
 }
 
 struct Shot: Identifiable {
@@ -91,6 +104,10 @@ struct GameState {
     private(set) var tunnelKick: Float = 0
     private(set) var comboPulse: Float = 0
     private(set) var waveBanner: Float = 0
+    private(set) var playerVisualLane: Float = 0
+    private(set) var playerLaneVel: Float = 0
+    private(set) var hitStop: Float = 0
+    private(set) var events = FrameEvents()
 
     private var spawnTimer: Float = 0
     private var enemiesRemaining = 0
@@ -116,10 +133,17 @@ struct GameState {
         tunnelKick = 0
         comboPulse = 0
         waveBanner = 0
+        playerVisualLane = 0
+        playerLaneVel = 0
+        hitStop = 0
+        events = FrameEvents()
         nextBonusLife = 25_000
         random = SeededRandom(seed: 0x4e454f4e)
         beginWave()
     }
+
+    /// Renderer reads `events` once per frame then drains; `update` only adds to it.
+    mutating func drainEvents() { events = FrameEvents() }
 
     mutating func togglePause() {
         switch phase {
@@ -140,16 +164,29 @@ struct GameState {
         shots.append(Shot(id: UUID(), lane: playerLane, depth: 0.04))
         muzzleFlashes.append(MuzzleFlash(id: UUID(), lane: playerLane, life: 0.12, initialLife: 0.12))
         screenShake = min(1, screenShake + 0.025)
+        events.shotsFired += 1
         shotCooldown = max(0.075, 0.15 - Float(wave) * 0.004)
     }
 
     mutating func update(deltaTime rawDeltaTime: Float) {
         let deltaTime = min(rawDeltaTime, 1 / 20)
+
+        // Hit-stop: on heavy impacts the world crunches to a near-freeze for a few
+        // frames while input and effects keep running, so hits land with weight.
+        if hitStop > 0 { hitStop = max(0, hitStop - deltaTime) }
+        let simDelta = hitStop > 0 ? deltaTime * 0.18 : deltaTime
+
         flash = max(0, flash - deltaTime * 2.8)
         screenShake = max(0, screenShake - deltaTime * 3.6)
         tunnelKick = max(0, tunnelKick - deltaTime * 2.2)
         comboPulse = max(0, comboPulse - deltaTime * 3.8)
         waveBanner = max(0, waveBanner - deltaTime)
+
+        // Slide the drawn player position toward its lane along the shortest arc.
+        let prevVisual = playerVisualLane
+        playerVisualLane = easeLane(playerVisualLane, toward: Float(playerLane), dt: deltaTime, rate: 22)
+        playerLaneVel = shortestLaneDelta(from: prevVisual, to: playerVisualLane) / max(deltaTime, 1e-4)
+
         muzzleFlashes = muzzleFlashes.compactMap { flash in
             var next = flash
             next.life -= deltaTime
@@ -173,7 +210,7 @@ struct GameState {
 
         shotCooldown -= deltaTime
         laneMoveCooldown -= deltaTime
-        spawnTimer -= deltaTime
+        spawnTimer -= simDelta
 
         if enemiesRemaining > 0, spawnTimer <= 0 {
             spawnEnemy()
@@ -183,8 +220,9 @@ struct GameState {
 
         let enemySpeed = 0.075 + Float(wave) * 0.006
         for index in enemies.indices {
-            enemies[index].depth -= enemySpeed * enemies[index].kind.speedMultiplier * deltaTime
-            enemies[index].phase += deltaTime
+            enemies[index].depth -= enemySpeed * enemies[index].kind.speedMultiplier * simDelta
+            enemies[index].phase += simDelta
+            enemies[index].visualLane = easeLane(enemies[index].visualLane, toward: Float(enemies[index].lane), dt: deltaTime, rate: 13)
 
             if enemies[index].kind == .flipper,
                enemies[index].phase > max(0.35, 1.1 - Float(wave) * 0.025) {
@@ -195,7 +233,7 @@ struct GameState {
         }
 
         for index in shots.indices {
-            shots[index].depth += (0.95 + Float(wave) * 0.012) * deltaTime
+            shots[index].depth += (0.95 + Float(wave) * 0.012) * simDelta
         }
         shots.removeAll { $0.depth > 1.05 }
 
@@ -209,6 +247,8 @@ struct GameState {
             screenShake = min(1, screenShake + 0.18)
             tunnelKick = min(1, tunnelKick + 0.7)
             waveBanner = 1.25
+            hitStop = max(hitStop, 0.07)
+            events.waveCleared = true
             emitShockwave(
                 position: SIMD3<Float>(0, 0, TunnelGeometry.depthZ(0.5)),
                 radius: 0.12,
@@ -236,13 +276,15 @@ struct GameState {
             kind = .spike
         }
 
+        let lane = random.nextInt(upperBound: Self.laneCount)
         enemies.append(
             Enemy(
                 id: UUID(),
-                lane: random.nextInt(upperBound: Self.laneCount),
+                lane: lane,
                 depth: 1,
                 kind: kind,
-                phase: random.nextFloat()
+                phase: random.nextFloat(),
+                visualLane: Float(lane)
             )
         )
     }
@@ -270,12 +312,19 @@ struct GameState {
             emitExplosion(lane: enemy.lane, depth: enemy.depth, kind: enemy.kind)
 
             if enemy.kind == .tanker {
+                events.bigExplosions += 1
+                hitStop = max(hitStop, 0.09)
+                let leftLane = wrappedLane(enemy.lane - 1)
+                let rightLane = wrappedLane(enemy.lane + 1)
                 spawnedEnemies.append(
-                    Enemy(id: UUID(), lane: wrappedLane(enemy.lane - 1), depth: enemy.depth + 0.04, kind: .spike, phase: 0)
+                    Enemy(id: UUID(), lane: leftLane, depth: enemy.depth + 0.04, kind: .spike, phase: 0, visualLane: Float(leftLane))
                 )
                 spawnedEnemies.append(
-                    Enemy(id: UUID(), lane: wrappedLane(enemy.lane + 1), depth: enemy.depth + 0.04, kind: .spike, phase: 0)
+                    Enemy(id: UUID(), lane: rightLane, depth: enemy.depth + 0.04, kind: .spike, phase: 0, visualLane: Float(rightLane))
                 )
+            } else {
+                events.explosions += 1
+                if combo >= 7 { hitStop = max(hitStop, 0.05) }
             }
         }
 
@@ -286,6 +335,7 @@ struct GameState {
         while score >= nextBonusLife {
             lives += 1
             nextBonusLife += 25_000
+            events.bonusLife = true
         }
     }
 
@@ -303,6 +353,8 @@ struct GameState {
         flash = 1
         screenShake = 1
         tunnelKick = 1
+        hitStop = max(hitStop, 0.12)
+        events.lifeLost = true
 
         if lives <= 0 {
             phase = .gameOver
@@ -405,6 +457,22 @@ struct GameState {
 
     private func wrappedLane(_ lane: Int) -> Int {
         (lane % Self.laneCount + Self.laneCount) % Self.laneCount
+    }
+
+    /// Shortest signed lane distance around the ring, in (-laneCount/2, laneCount/2].
+    private func shortestLaneDelta(from: Float, to: Float) -> Float {
+        let n = Float(Self.laneCount)
+        let d = to - from
+        return d - (d / n).rounded() * n
+    }
+
+    /// Exponential ease of a lane position toward a target along the shortest arc,
+    /// kept wrapped into [0, laneCount).
+    private func easeLane(_ current: Float, toward target: Float, dt: Float, rate: Float) -> Float {
+        let n = Float(Self.laneCount)
+        var next = current + shortestLaneDelta(from: current, to: target) * (1 - exp(-dt * rate))
+        next = next.truncatingRemainder(dividingBy: n)
+        return next < 0 ? next + n : next
     }
 }
 

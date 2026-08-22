@@ -2,9 +2,12 @@
 
 Radial Afterburn is a small macOS tube shooter written in Swift and Metal. It
 renders a 3D perspective tunnel with texture-mapped walls, billboard sprites,
-distance fog, and a bloom post-process pass — all generated procedurally in
-code, with no game engine or bundled art. The textures, geometry, ships,
-particles, and HUD all come from code.
+distance fog, a glowing core, a streaming starfield, per-wave color palettes,
+and a bloom post-process pass — all generated procedurally in code, with no
+game engine or bundled art. The textures, geometry, ships, particles, HUD, and
+even the sound effects all come from code. Player and enemy lane changes slide
+rather than snap, the camera leans and lunges with the action, and heavy hits
+briefly freeze the world for impact.
 
 The game is built around a 16-lane tunnel. Move around the rim, shoot down the
 lanes, and clear each wave before enemies break through to the edge.
@@ -70,7 +73,9 @@ Enemy types:
 
 ## Project Layout
 
-- `GameState.swift`: rules, waves, scoring, collisions, and effects state
+- `GameState.swift`: rules, waves, scoring, collisions, smooth-motion state, hit-stop, and per-frame audio events
+- `GameAudio.swift`: procedurally synthesized SFX and ambient drone (AVFoundation, no audio files)
+- `Palette.swift`: per-wave neon color palettes (HSV rotation, wave 1 anchored to cyan/violet)
 - `TunnelGeometry.swift` / `Matrix.swift`: pure projection math (unit-tested, no Metal)
 - `Renderer.swift`: orchestrates the 3D render passes (textured tunnel, sprites, particles, bloom); decoupled from `MTKView`
 - `TextureFactory.swift`: procedural textures generated in code
