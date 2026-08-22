@@ -5,3 +5,4 @@
 DerivedData/
 *.xcuserstate
 .vscode/
+.DS_Store
