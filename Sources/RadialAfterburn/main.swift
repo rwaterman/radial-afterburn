@@ -6,7 +6,7 @@ final class GameViewController: NSViewController {
     private var gameView: MetalGameView!
     private let scoreLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE")
+    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC")
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 760))
@@ -141,8 +141,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let arguments = CommandLine.arguments
+if let idx = arguments.firstIndex(of: "--export-music") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "theme.wav"
+    let sampleRate = Float(GameAudio.sampleRate)
+    let ok = Soundtrack.exportWAV(layers: Soundtrack.render(sampleRate: sampleRate), sampleRate: sampleRate, path: path)
+    exit(ok ? 0 : 1)
+}
 if let idx = arguments.firstIndex(of: "--screenshot") {
-    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "/tmp/nv.png"
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "screenshot.png"
     func intArg(_ name: String, _ def: Int) -> Int {
         guard let i = arguments.firstIndex(of: name), i + 1 < arguments.count, let v = Int(arguments[i + 1]) else { return def }
         return v

@@ -162,7 +162,7 @@ final class Renderer {
         let dt = Float(now - lastFrameTime)
         lastFrameTime = now
         game.update(deltaTime: dt)
-        audio?.handle(game.events)
+        audio?.update(game, deltaTime: dt)
         game.drainEvents()
 
         guard let drawable = view.currentDrawable, let size = optionalSize(view.drawableSize) else { return }
@@ -280,7 +280,7 @@ final class Renderer {
         enc.endEncoding()
     }
 
-    /// Scene contents. Extended by Tasks 5-9.
+    /// Scene contents: walls, edges, core glow, starfield, sprites, particles.
     func encodeScene(encoder: MTLRenderCommandEncoder, size: SIMD2<Float>, time: Float) {
         var u = uniforms(size: size, time: time)
         let palette = Palette.forWave(game.wave)

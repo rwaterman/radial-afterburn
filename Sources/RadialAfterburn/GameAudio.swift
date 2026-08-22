@@ -1,17 +1,26 @@
 import AVFoundation
 
-/// All sound is synthesized procedurally at startup — no bundled audio, matching the
-/// "everything from code" spirit of the renderer. A small pool of player voices is
-/// round-robined so rapid fire and explosions overlap instead of cutting each other off.
+/// All sound is synthesized procedurally — no bundled audio, matching the
+/// "everything from code" spirit of the renderer. SFX are short PCM one-shots
+/// round-robined across a voice pool so rapid fire and explosions overlap. The
+/// soundtrack (`Soundtrack`) is rendered in the background at launch as five
+/// sample-locked looping layers whose volumes follow the game phase and wave.
 /// If the audio engine can't start, the game runs silently rather than crashing.
 @MainActor
 final class GameAudio {
+    nonisolated static let sampleRate = 44_100.0
+    /// Layer volumes (drums, bass, chords, arp, lead) at full intensity.
+    nonisolated static let fullMix: [Float] = [0.45, 0.38, 0.28, 0.18, 0.48]
+
     private let engine = AVAudioEngine()
     private let format: AVAudioFormat
     private var voices: [AVAudioPlayerNode] = []
     private var voiceIndex = 0
-    private let ambientNode = AVAudioPlayerNode()
     private var enabled = false
+
+    private var musicNodes: [AVAudioPlayerNode] = []
+    private var musicVolumes: [Float] = Array(repeating: 0, count: 5)
+    private(set) var musicEnabled = true
 
     private let fire: AVAudioPCMBuffer
     private let explosion: AVAudioPCMBuffer
@@ -19,11 +28,9 @@ final class GameAudio {
     private let waveClear: AVAudioPCMBuffer
     private let lifeLost: AVAudioPCMBuffer
     private let bonus: AVAudioPCMBuffer
-    private let ambient: AVAudioPCMBuffer
 
     init() {
-        let sr = 44_100.0
-        let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1)!
+        let fmt = AVAudioFormat(standardFormatWithSampleRate: GameAudio.sampleRate, channels: 1)!
         format = fmt
 
         // Short descending zap with a noisy attack click.
@@ -82,47 +89,88 @@ final class GameAudio {
             return sin(2 * .pi * f * seg) * exp(-seg * 14) * 0.5
         }
 
-        // Seamless 4s drone loop: every frequency completes whole cycles in 4s.
-        ambient = GameAudio.buffer(format: fmt, seconds: 4.0) { t, _ in
-            let lfo = 0.6 + 0.4 * sin(2 * .pi * 0.25 * t)
-            let low = (sin(2 * .pi * 55 * t) + sin(2 * .pi * 55.25 * t)) * 0.35
-            let mid = sin(2 * .pi * 82.5 * t) * 0.25
-            let body = sin(2 * .pi * 110 * t) * 0.4
-            let air = sin(2 * .pi * 220 * t) * 0.05 * (0.5 + 0.5 * sin(2 * .pi * 0.5 * t))
-            return (low + mid + body) * lfo * 0.18 + air
-        }
-
         for _ in 0..<8 {
             let node = AVAudioPlayerNode()
             engine.attach(node)
             engine.connect(node, to: engine.mainMixerNode, format: fmt)
             voices.append(node)
         }
-        engine.attach(ambientNode)
-        engine.connect(ambientNode, to: engine.mainMixerNode, format: fmt)
+        for _ in 0..<GameAudio.fullMix.count {
+            let node = AVAudioPlayerNode()
+            node.volume = 0
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: fmt)
+            musicNodes.append(node)
+        }
         engine.mainMixerNode.outputVolume = 0.85
 
         do {
             try engine.start()
             enabled = true
             for voice in voices { voice.play() }
-            ambientNode.volume = 0.22
-            ambientNode.scheduleBuffer(ambient, at: nil, options: .loops, completionHandler: nil)
-            ambientNode.play()
         } catch {
+            FileHandle.standardError.write(Data("audio: engine failed to start, running silent (\(error))\n".utf8))
             enabled = false
+            return
+        }
+
+        // The theme takes a moment to synthesize; render it off the main thread and
+        // start all layers on one shared clock so they stay sample-locked.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let layers = Soundtrack.render(sampleRate: Float(GameAudio.sampleRate))
+            await self?.startMusic(layers)
         }
     }
 
-    /// Play the sounds for one frame's worth of gameplay events.
-    func handle(_ e: FrameEvents) {
+    private func startMusic(_ layers: SongLayers) {
+        let startTime = AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.1))
+        for (node, samples) in zip(musicNodes, layers.all) {
+            let buffer = GameAudio.buffer(format: format, samples: samples)
+            node.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
+            node.play(at: startTime)
+        }
+    }
+
+    /// Play this frame's SFX and ease the music layers toward the mix for the
+    /// current phase and wave.
+    func update(_ game: GameState, deltaTime: Float) {
         guard enabled else { return }
+        let e = game.events
         for _ in 0..<e.shotsFired { play(fire, volume: 0.32) }
         for _ in 0..<e.explosions { play(explosion, volume: 0.5) }
         for _ in 0..<e.bigExplosions { play(bigExplosion, volume: 0.75) }
         if e.waveCleared { play(waveClear, volume: 0.6) }
         if e.lifeLost { play(lifeLost, volume: 0.75) }
         if e.bonusLife { play(bonus, volume: 0.6) }
+
+        let target = musicEnabled ? GameAudio.mix(phase: game.phase, wave: game.wave) : Array(repeating: 0, count: musicNodes.count)
+        let ease = 1 - exp(-deltaTime * 5)
+        for i in musicNodes.indices {
+            musicVolumes[i] += (target[i] - musicVolumes[i]) * ease
+            musicNodes[i].volume = musicVolumes[i]
+        }
+    }
+
+    func toggleMusic() {
+        musicEnabled.toggle()
+    }
+
+    /// Per-layer volumes (drums, bass, chords, arp, lead). The title screen idles on
+    /// bass, chords, and arp; drums and lead come in when play starts, and the lead
+    /// and arp grow with the wave. Pause and game over duck everything.
+    nonisolated static func mix(phase: GamePhase, wave: Int) -> [Float] {
+        let full = fullMix
+        switch phase {
+        case .title:
+            return [0, full[1] * 0.7, full[2], full[3] * 0.8, 0]
+        case .playing:
+            let ramp = min(1, Float(wave - 1) / 5)
+            return [full[0], full[1], full[2], full[3] * (0.6 + 0.4 * ramp), full[4] * (0.75 + 0.25 * ramp)]
+        case .paused:
+            return full.map { $0 * 0.3 }
+        case .gameOver:
+            return [0, full[1] * 0.4, full[2] * 0.5, 0, 0]
+        }
     }
 
     private func play(_ buffer: AVAudioPCMBuffer, volume: Float) {
@@ -134,12 +182,19 @@ final class GameAudio {
 
     private static func buffer(format: AVAudioFormat, seconds: Double, _ gen: (Double, Int) -> Double) -> AVAudioPCMBuffer {
         let n = max(1, Int(seconds * format.sampleRate))
-        let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n))!
-        buf.frameLength = AVAudioFrameCount(n)
-        let samples = buf.floatChannelData![0]
+        var samples = [Float](repeating: 0, count: n)
         for i in 0..<n {
             let t = Double(i) / format.sampleRate
             samples[i] = Float(max(-1, min(1, gen(t, i))))
+        }
+        return buffer(format: format, samples: samples)
+    }
+
+    private static func buffer(format: AVAudioFormat, samples: [Float]) -> AVAudioPCMBuffer {
+        let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buf.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { src in
+            buf.floatChannelData![0].update(from: src.baseAddress!, count: samples.count)
         }
         return buf
     }
