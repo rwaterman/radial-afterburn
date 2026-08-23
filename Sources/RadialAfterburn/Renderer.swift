@@ -323,8 +323,15 @@ final class Renderer {
         drawSprites(coreGlow(time: t, palette: palette), texture: glowTexture, uniforms: &u, encoder: encoder)
 
         // Pass C: player + enemies (additive billboards, depth-tested)
-        let playerCenter = TunnelGeometry.worldPoint(laneFraction: game.playerVisualLane, depth: 0.04, time: t, wave: game.wave, kick: game.tunnelKick)
+        let playerCenter = TunnelGeometry.worldPoint(laneFraction: game.playerVisualLane, depth: GameState.shipDepth, time: t, wave: game.wave, kick: game.tunnelKick)
         let pulse = 0.85 + sin(t * 9) * 0.15
+        var exhaustVerts: [TexVertex] = []
+        for speck in game.exhaust {
+            let alpha = max(0, min(1, speck.life / speck.initialLife))
+            exhaustVerts += SpriteBatch.billboard(center: speck.position, size: 0.05 * speck.scale, color: speck.color * SIMD4(2.4, 2.4, 2.4, alpha))
+        }
+        drawSprites(exhaustVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
+        drawSprites(afterburner(shipCenter: playerCenter, time: t), texture: glowTexture, uniforms: &u, encoder: encoder)
         drawSprites(SpriteBatch.billboard(center: playerCenter, size: 0.16, color: SIMD4(0.1, 1, 0.95, pulse)),
                     texture: playerTexture, uniforms: &u, encoder: encoder)
 
@@ -356,7 +363,7 @@ final class Renderer {
         var muzzleVerts: [TexVertex] = []
         for flash in game.muzzleFlashes {
             let amount = max(0, min(1, flash.life / flash.initialLife))
-            let center = TunnelGeometry.worldPoint(lane: flash.lane, depth: 0.05, time: t, wave: game.wave, kick: game.tunnelKick)
+            let center = TunnelGeometry.worldPoint(lane: flash.lane, depth: GameState.shipDepth + 0.01, time: t, wave: game.wave, kick: game.tunnelKick)
             muzzleVerts += SpriteBatch.billboard(center: center, size: 0.08 + 0.1 * (1 - amount), color: SIMD4(1, 0.9, 0.3, amount))
         }
         drawSprites(muzzleVerts, texture: glowTexture, uniforms: &u, encoder: encoder)
@@ -388,6 +395,35 @@ final class Renderer {
         encoder.setFragmentBytes(&u, length: MemoryLayout<FrameUniforms>.stride, index: 1)
         encoder.setFragmentTexture(texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: verts.count)
+    }
+
+    /// Twin afterburner plumes trailing the ship back toward the camera: stacked glow
+    /// sprites from white-hot at the nozzles through orange to a red haze, flickering,
+    /// and flaring when the ship is sliding or the tube kicks.
+    private func afterburner(shipCenter: SIMD3<Float>, time: Float) -> [TexVertex] {
+        let angle = TunnelGeometry.angle(laneFraction: game.playerVisualLane)
+        let tangent = SIMD3<Float>(-sin(angle), cos(angle), 0)
+        let inward = SIMD3<Float>(-cos(angle), -sin(angle), 0)
+        let slide = min(1, abs(game.cameraLaneVel) * 0.25)
+        let boost = 1 + slide * 0.6 + game.tunnelKick * 0.5
+        var verts: [TexVertex] = []
+        for nozzle in [-1, 1] as [Float] {
+            let phaseOffset = nozzle * 1.3
+            let segments = 9
+            for i in 0..<segments {
+                let fi = Float(i)
+                let flicker = 0.78 + 0.22 * sin(time * 47 + fi * 2.3 + phaseOffset) * sin(time * 31 + fi)
+                // Each segment sits further back along the tube (toward the camera) and swells.
+                let depth = GameState.shipDepth - (0.01 + fi * 0.009) * boost
+                let center = TunnelGeometry.worldPoint(laneFraction: game.playerVisualLane, depth: depth, time: time, wave: game.wave, kick: game.tunnelKick)
+                    + tangent * (nozzle * 0.035) + inward * (0.09 + fi * 0.006)
+                let heat = 1 - fi / Float(segments)
+                let color = SIMD4<Float>(1, 0.3 + 0.7 * heat, 0.05 + 0.9 * heat * heat, (0.2 + 0.8 * heat) * flicker)
+                let size = (0.06 + fi * 0.016) * (0.9 + 0.5 * slide) * flicker
+                verts += SpriteBatch.billboard(center: center, size: size, color: color * SIMD4(3.2, 3.2, 3.2, 1))
+            }
+        }
+        return verts
     }
 
     /// Pulsing glow well down the throat of the tunnel; flares on a tunnel kick.
