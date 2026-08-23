@@ -129,18 +129,20 @@ final class Renderer {
         let jx = (sin(time * 79) + sin(time * 41) * 0.5) * shake
         let jy = (cos(time * 83) + sin(time * 57) * 0.5) * shake
 
-        // Eased lean toward the player's side of the rim — the eye drifts more than
-        // the look target, tilting the tube for parallax instead of a flat pan.
-        let pa = TunnelGeometry.angle(laneFraction: game.playerVisualLane)
-        let lean: Float = 0.22
+        // Gentle lean toward the player's side of the rim, following the slow camera
+        // lane rather than the ship — the eye drifts more than the look target,
+        // tilting the tube for parallax instead of a flat pan.
+        let pa = TunnelGeometry.angle(laneFraction: game.cameraLane)
+        let lean: Float = 0.13
         let lx = cos(pa) * lean
         let ly = sin(pa) * lean
 
         // Dolly: lunge toward the tunnel mouth on a big kick (wave clear / tanker / breach).
         let dolly = -0.6 * game.tunnelKick
 
-        // Bank the view by the player's angular velocity so quick moves feel kinetic.
-        let roll = max(-0.13, min(0.13, game.playerLaneVel * 0.02))
+        // Slight bank with the camera's angular velocity; kept small — a hard roll on
+        // every lane step reads as shake, not speed.
+        let roll = max(-0.05, min(0.05, game.cameraLaneVel * 0.008))
         let up = SIMD3<Float>(sin(roll), cos(roll), 0)
 
         let eye = SIMD3<Float>(jx + lx, jy + ly, dolly)
