@@ -22,7 +22,7 @@ lanes, and clear each wave before enemies break through to the edge.
 
 ## Demo
 
-![Six seconds of wave 2: flippers, shockwaves, and a ×9 combo](docs/media/demo.gif)
+![Six seconds of play: combo kills, then a bomb clears the wave](docs/media/demo.gif)
 
 [Watch the 30-second demo with sound (MP4)](https://github.com/rwaterman/radial-afterburn/releases/latest/download/radial-afterburn-demo.mp4)
 
@@ -31,7 +31,7 @@ lanes, and clear each wave before enemies break through to the edge.
 
 Both are rendered from code — a scripted player, offscreen Metal frames with
 the HUD composited in, and (for the video) the soundtrack and SFX mixed to the
-same clock. The GIF picks the busiest six seconds of a scripted run on its own:
+same clock. The GIF frames the run's first bomb on its own:
 
 ```sh
 swift run -c release RadialAfterburn --record demo.mp4 --seconds 30
@@ -90,6 +90,7 @@ GPU or an audio device, so they run on CI.
 | Left / A | Move counter-clockwise |
 | Right / D | Move clockwise |
 | Space | Fire |
+| B / ↓ | Bomb — destroys every enemy on screen (two per wave) |
 | P | Pause |
 | M | Music on / off |
 | Return | Start (from the title or game-over screen) |
@@ -100,7 +101,8 @@ GPU or an audio device, so they run on CI.
 You start with three lives. Destroy enemies to score points and build a combo
 multiplier; letting one reach the rim costs a life and resets the combo. Clearing
 a wave advances the game and increases the pace. Every 25,000 points earns a
-bonus life.
+bonus life. Each wave hands you two bombs: a bomb blows up everything in the
+tube at the current combo, so save it for a swarm.
 
 Enemy types:
 

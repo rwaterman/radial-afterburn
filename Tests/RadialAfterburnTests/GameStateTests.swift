@@ -134,6 +134,43 @@ struct GameStateTests {
         #expect(game.playerVisualLane >= 0)
     }
 
+    @Test("Bomb clears every enemy, scores them, and costs one bomb")
+    func bombClearsEnemies() {
+        var game = GameState()
+        game.start()
+        for _ in 0..<240 { game.update(deltaTime: 1.0 / 60) }
+        #expect(game.enemies.count >= 2)
+        #expect(game.bombs == GameState.bombsPerWave)
+        let before = game.enemies.count
+        game.drainEvents()
+        game.bomb()
+
+        #expect(game.enemies.isEmpty)
+        #expect(game.bombs == GameState.bombsPerWave - 1)
+        #expect(game.score >= before * 100)
+        #expect(game.events.bombs == 1)
+        #expect(game.events.explosions == before)
+        #expect(game.hitStop > 0)
+    }
+
+    @Test("Bomb does nothing without enemies or bombs")
+    func bombGuards() {
+        var game = GameState()
+        game.start()
+        game.drainEvents()
+        game.bomb()                                  // clears the wave's opening enemies
+        #expect(game.enemies.isEmpty)
+        game.bomb()                                  // nothing to hit
+        #expect(game.bombs == GameState.bombsPerWave - 1)
+        #expect(game.events.bombs == 1)
+        for _ in 0..<60 { game.update(deltaTime: 1.0 / 60) }   // next spawn lands
+        #expect(!game.enemies.isEmpty)
+        game.bomb()
+        game.bomb()                                  // out of bombs
+        #expect(game.bombs == 0)
+        #expect(game.events.bombs == 2)
+    }
+
     @Test("Seeded random is reproducible")
     func randomIsReproducible() {
         var first = SeededRandom(seed: 42)

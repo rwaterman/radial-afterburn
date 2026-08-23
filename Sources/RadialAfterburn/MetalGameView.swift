@@ -57,6 +57,8 @@ final class MetalGameView: MTKView, MTKViewDelegate {
             audio?.toggleMusic()
         case 49:
             renderer?.game.fire()
+        case 11, 125:
+            renderer?.game.bomb()
         case 53:
             NSApplication.shared.terminate(nil)
         default:

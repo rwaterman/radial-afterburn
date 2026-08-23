@@ -288,6 +288,13 @@ final class Renderer {
         let palette = Palette.forWave(game.wave)
         let rings = 36
 
+        // Background stars behind the tube: drawn first, unfogged, so the walls
+        // cover them and only the band around the tunnel mouth shows.
+        var unfogged = u
+        unfogged.fogStart = 1_000
+        unfogged.fogEnd = 2_000
+        drawSprites(starfield(time: time, palette: palette), texture: glowTexture, uniforms: &unfogged, encoder: encoder)
+
         // Pass A: textured wall panels (write depth)
         let panels = TunnelMesh.wallPanels(rings: rings, time: time, kick: game.tunnelKick, wave: game.wave, palette: palette)
         if let buf = device.makeBuffer(bytes: panels, length: MemoryLayout<TexVertex>.stride * panels.count) {
@@ -312,9 +319,8 @@ final class Renderer {
 
         let t = time
 
-        // Glowing core at the vanishing point + a streaming starfield, for depth and speed.
+        // Glowing core at the vanishing point, for depth.
         drawSprites(coreGlow(time: t, palette: palette), texture: glowTexture, uniforms: &u, encoder: encoder)
-        drawSprites(starfield(time: t, palette: palette), texture: glowTexture, uniforms: &u, encoder: encoder)
 
         // Pass C: player + enemies (additive billboards, depth-tested)
         let playerCenter = TunnelGeometry.worldPoint(laneFraction: game.playerVisualLane, depth: 0.04, time: t, wave: game.wave, kick: game.tunnelKick)
@@ -403,26 +409,28 @@ final class Renderer {
         return verts
     }
 
-    /// Deterministic specks that stream from the core toward the camera and wrap,
-    /// giving the tube depth and a sense of speed. Derived purely from `time`, so it
-    /// stays reproducible for headless screenshots and needs no game state.
+    /// Deterministic stars on a far plane behind the tube, visible around the tunnel
+    /// mouth, drifting slowly toward the camera. Kept outside the tube so nothing
+    /// competes with enemies inside it. Derived purely from `time`, so it stays
+    /// reproducible for headless captures.
     private func starfield(time: Float, palette: WavePalette) -> [TexVertex] {
         var verts: [TexVertex] = []
-        let count = 90
-        let tint = palette.accent + (SIMD4<Float>(1, 1, 1, 1) - palette.accent) * 0.45
+        let count = 220
+        let tint = palette.accent + (SIMD4<Float>(1, 1, 1, 1) - palette.accent) * 0.7
         for i in 0..<count {
             let fi = Float(i)
             let angle = fi * 2.39996323  // golden angle, even angular spread
-            let speed = 0.05 + fi.truncatingRemainder(dividingBy: 7) * 0.012
-            let phase = (time * speed + fi * 0.0137).truncatingRemainder(dividingBy: 1)
-            let depth = 1 - phase                       // far (1) -> near (0)
-            let radial = 0.12 + (sin(fi * 1.7) * 0.5 + 0.5) * 0.78
-            let r = TunnelGeometry.radius * radial
-            let pos = SIMD3<Float>(cos(angle) * r, sin(angle) * r, TunnelGeometry.depthZ(depth))
-            let near = 1 - depth
-            let bright = near * near
-            verts += SpriteBatch.billboard(center: pos, size: 0.012 + bright * 0.03,
-                                           color: tint * SIMD4(1, 1, 1, 0.12 + bright * 0.85))
+            let phase = (time * (0.012 + fi.truncatingRemainder(dividingBy: 5) * 0.004) + fi * 0.0731).truncatingRemainder(dividingBy: 1)
+            let z: Float = -60 + 30 * phase          // drift from z = -60 toward -30, then wrap
+            // The tube's near rim fills ~1.14 frame half-heights, so the visible sky is
+            // the corners: keep stars at 1.15–1.75 half-heights (55° FOV spans ±0.52
+            // units per unit of depth).
+            let band = 1.15 + (sin(fi * 1.7) * 0.5 + 0.5) * 0.6
+            let r = -z * 0.52 * band
+            let pos = SIMD3<Float>(cos(angle) * r, sin(angle) * r, z)
+            let twinkle = 0.55 + 0.45 * sin(time * 3 + fi * 2.1)
+            let size = -z * (0.006 + 0.010 * (fi.truncatingRemainder(dividingBy: 3) / 2))
+            verts += SpriteBatch.billboard(center: pos, size: size, color: tint * SIMD4(1, 1, 1, 0.45 + 0.55 * twinkle))
         }
         return verts
     }
