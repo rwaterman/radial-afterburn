@@ -105,7 +105,10 @@ struct GameState {
     private(set) var comboPulse: Float = 0
     private(set) var waveBanner: Float = 0
     private(set) var playerVisualLane: Float = 0
-    private(set) var playerLaneVel: Float = 0
+    /// Camera follow position: trails `playerVisualLane` on a slower ease so the
+    /// view glides instead of lurching with every lane step.
+    private(set) var cameraLane: Float = 0
+    private(set) var cameraLaneVel: Float = 0
     private(set) var hitStop: Float = 0
     private(set) var events = FrameEvents()
 
@@ -134,7 +137,8 @@ struct GameState {
         comboPulse = 0
         waveBanner = 0
         playerVisualLane = 0
-        playerLaneVel = 0
+        cameraLane = 0
+        cameraLaneVel = 0
         hitStop = 0
         events = FrameEvents()
         nextBonusLife = 25_000
@@ -163,7 +167,7 @@ struct GameState {
         guard phase == .playing, shotCooldown <= 0 else { return }
         shots.append(Shot(id: UUID(), lane: playerLane, depth: 0.04))
         muzzleFlashes.append(MuzzleFlash(id: UUID(), lane: playerLane, life: 0.12, initialLife: 0.12))
-        screenShake = min(1, screenShake + 0.025)
+        screenShake = min(1, screenShake + 0.01)
         events.shotsFired += 1
         shotCooldown = max(0.075, 0.15 - Float(wave) * 0.004)
     }
@@ -183,9 +187,10 @@ struct GameState {
         waveBanner = max(0, waveBanner - deltaTime)
 
         // Slide the drawn player position toward its lane along the shortest arc.
-        let prevVisual = playerVisualLane
         playerVisualLane = easeLane(playerVisualLane, toward: Float(playerLane), dt: deltaTime, rate: 22)
-        playerLaneVel = shortestLaneDelta(from: prevVisual, to: playerVisualLane) / max(deltaTime, 1e-4)
+        let prevCamera = cameraLane
+        cameraLane = easeLane(cameraLane, toward: playerVisualLane, dt: deltaTime, rate: 5)
+        cameraLaneVel = shortestLaneDelta(from: prevCamera, to: cameraLane) / max(deltaTime, 1e-4)
 
         muzzleFlashes = muzzleFlashes.compactMap { flash in
             var next = flash

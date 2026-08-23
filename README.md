@@ -1,9 +1,8 @@
 # Radial Afterburn
 
-> **An experiment in building a game with 99% generative AI.** The design,
+> **An experiment in building a Tempest clone (at least to start) game with 99% generative AI.** The design,
 > code, procedural art, FM soundtrack, sound effects, demo capture, and this
-> README were produced by AI coding agents directed by a human. The human
-> contribution is the brief, the taste, and the merge button.
+> README were produced by AI coding agents supervised by the human contributor
 
 Radial Afterburn is a small macOS tube shooter written in Swift and Metal. It
 renders a 3D perspective tunnel with texture-mapped walls, billboard sprites,
