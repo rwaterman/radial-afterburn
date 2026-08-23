@@ -20,6 +20,20 @@ lead and arp grow with the wave.
 The game is built around a 16-lane tunnel. Move around the rim, shoot down the
 lanes, and clear each wave before enemies break through to the edge.
 
+## Demo
+
+<!-- Inline player: drag radial-afterburn-demo.mp4 into this file in GitHub's web
+     editor and paste the user-attachments URL it inserts on its own line here. -->
+
+[Watch the 30-second demo with sound (MP4)](https://github.com/rwaterman/radial-afterburn/releases/latest/download/radial-afterburn-demo.mp4)
+
+The demo is rendered from code too — a scripted player, offscreen Metal frames
+with the HUD composited in, and the soundtrack and SFX mixed to the same clock:
+
+```sh
+swift run -c release RadialAfterburn --record demo.mp4 --seconds 30
+```
+
 ## Requirements
 
 - macOS 14 or later
@@ -104,7 +118,8 @@ Enemy types:
 - `Shaders.swift`: runtime-compiled Metal shaders (textured-lit, neon line, bloom)
 - `Screenshot.swift`: headless `--screenshot` PNG renderer
 - `MetalGameView.swift`: input and frame timing
-- `main.swift`: AppKit window, HUD, application setup, and the `--screenshot` / `--export-music` entry points
+- `VideoRecorder.swift`: headless `--record` gameplay capture (H.264 + AAC via AVAssetWriter)
+- `main.swift`: AppKit window, HUD, application setup, and the `--screenshot` / `--export-music` / `--record` entry points
 - `Tests/RadialAfterburnTests`: simulation, projection-math, and soundtrack tests
 - `docs/design`: the renderer design note
 
