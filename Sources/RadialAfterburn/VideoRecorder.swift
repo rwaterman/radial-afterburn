@@ -182,7 +182,14 @@ private func mux(video videoURL: URL, audio audioURL: URL, into url: URL) -> Boo
             guard let export = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
                 _ = report("cannot create export session", nil); return
             }
-            try await export.export(to: url, as: .mp4)
+            if #available(macOS 15, *) {
+                try await export.export(to: url, as: .mp4)
+            } else {
+                export.outputURL = url
+                export.outputFileType = .mp4
+                await export.export()
+                if let error = export.error { throw error }
+            }
             outcome.ok = true
         } catch {
             _ = report("mux failed", error)
