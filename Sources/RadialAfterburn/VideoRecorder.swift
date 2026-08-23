@@ -90,16 +90,18 @@ private func simulate(renderer: Renderer, seconds: Int, fps: Int) -> SimulatedRu
 /// the winner with ImageIO.
 @MainActor
 func runGIF(path: String, seconds: Int, width: Int, height: Int) -> Bool {
-    let fps = 15
+    // Simulate at the game's 60 Hz so the run matches the video, output every 4th frame.
+    let simFPS = 60, stride = 4
     guard let renderer = makeHeadlessRenderer(),
-          let run = simulate(renderer: renderer, seconds: 40, fps: fps) else { return false }
-    let window = max(1, seconds * fps)
+          let run = simulate(renderer: renderer, seconds: 45, fps: simFPS) else { return false }
+    let window = max(1, seconds * simFPS)
     var score = [Int](repeating: 0, count: run.snapshots.count)
     for hit in run.hits {
         switch hit.effect {
         case .explosion: score[hit.frame] += 1
         case .bigExplosion: score[hit.frame] += 2
         case .waveClear: score[hit.frame] += 6
+        case .bomb: score[hit.frame] += 12
         default: break
         }
     }
@@ -111,16 +113,21 @@ func runGIF(path: String, seconds: Int, width: Int, height: Int) -> Bool {
         if frame >= earliest + window { rolling -= score[frame - window] }
         if frame >= earliest + window - 1, rolling > bestScore { bestScore = rolling; best = frame - window + 1 }
     }
-    let frames = best..<min(best + window, run.snapshots.count)
+    // A bomb is the showpiece: if one fired, frame it 60% of the way through the
+    // loop so the build-up and the aftermath both show.
+    if let bomb = run.hits.first(where: { $0.effect == .bomb && $0.frame >= earliest })?.frame {
+        best = max(earliest, min(bomb - window * 6 / 10, score.count - window))
+    }
+    let frames = Swift.stride(from: best, to: min(best + window, run.snapshots.count), by: stride)
 
     let url = URL(fileURLWithPath: path) as CFURL
-    guard let destination = CGImageDestinationCreateWithURL(url, UTType.gif.identifier as CFString, frames.count, nil)
+    guard let destination = CGImageDestinationCreateWithURL(url, UTType.gif.identifier as CFString, frames.underestimatedCount, nil)
     else { return report("cannot create GIF at \(path)", nil) }
     CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-    let frameProperties = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / Double(fps)]] as CFDictionary
+    let frameProperties = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: Double(stride) / Double(simFPS)]] as CFDictionary
     for frame in frames {
         renderer.game = run.snapshots[frame]
-        var bgra = renderer.renderSnapshot(width: width, height: height, time: Float(frame) / Float(fps))
+        var bgra = renderer.renderSnapshot(width: width, height: height, time: Float(frame) / Float(simFPS))
         guard bgra.count == width * height * 4 else { return report("render failed at frame \(frame)", nil) }
         drawHUD(into: &bgra, width: width, height: height, game: run.snapshots[frame], titleAlpha: 0)
         guard let image = makeCGImage(bgra: bgra, width: width, height: height) else { return report("image failed at frame \(frame)", nil) }
@@ -278,6 +285,14 @@ private struct ScriptedPlayer {
             break
         }
         let engageDepth: Float = 0.42
+        // Panic bomb: several enemies about to breach, or the tube is swarming.
+        let nearRim = game.enemies.filter { $0.depth < 0.22 }.count
+        let visible = game.enemies.filter { $0.depth < 0.55 }.count
+        if game.bombs > 0, nearRim >= 2 || visible >= 5 {
+            game.bomb()
+            targetID = nil
+            return
+        }
         if let id = targetID, !game.enemies.contains(where: { $0.id == id }) { targetID = nil }
         if targetID == nil {
             targetID = game.enemies.filter { $0.depth < engageDepth }.min(by: { $0.depth < $1.depth })?.id
@@ -374,11 +389,11 @@ private func drawHUD(into bgra: inout [UInt8], width: Int, height: Int, game: Ga
         // Small frames (GIF) get a compact score line and no help bar.
         let compact = width < 800
         let scoreLine = compact
-            ? String(format: "SCORE %08d   WAVE %02d   ×%d", game.score, game.wave, game.combo)
-            : String(format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   ×%d", game.score, game.highScore, game.wave, game.lives, game.combo)
+            ? String(format: "SCORE %08d   WAVE %02d   BOMBS %d   ×%d", game.score, game.wave, game.bombs, game.combo)
+            : String(format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   BOMBS %d   ×%d", game.score, game.highScore, game.wave, game.lives, game.bombs, game.combo)
         draw(scoreLine, size: compact ? 13 : 16, bold: true, color: scoreColor, x: compact ? 14 : 24, y: compact ? 26 : 36)
         if !compact {
-            draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC",
+            draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   B/↓  BOMB   P  PAUSE   M  MUSIC",
                  size: 12, bold: false, color: CGColor(red: 0.25, green: 0.85, blue: 1, alpha: 0.8), x: nil, y: CGFloat(height) - 22)
         }
 

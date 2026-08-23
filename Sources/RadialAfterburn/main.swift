@@ -6,7 +6,7 @@ final class GameViewController: NSViewController {
     private var gameView: MetalGameView!
     private let scoreLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC")
+    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   B/↓  BOMB   P  PAUSE   M  MUSIC")
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 760))
@@ -83,11 +83,12 @@ final class GameViewController: NSViewController {
             alpha: 1
         )
         scoreLabel.stringValue = String(
-            format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   ×%d",
+            format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   BOMBS %d   ×%d",
             game.score,
             game.highScore,
             game.wave,
             game.lives,
+            game.bombs,
             game.combo
         )
 

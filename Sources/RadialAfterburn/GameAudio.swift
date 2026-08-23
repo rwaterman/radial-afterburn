@@ -133,7 +133,7 @@ final class GameAudio {
 
 /// Synthesized one-shot effects, shared by live playback and the video recorder.
 enum SoundEffect: CaseIterable {
-    case fire, explosion, bigExplosion, waveClear, lifeLost, bonus
+    case fire, explosion, bigExplosion, waveClear, lifeLost, bonus, bomb
 
     var volume: Float {
         switch self {
@@ -143,6 +143,7 @@ enum SoundEffect: CaseIterable {
         case .waveClear: 0.6
         case .lifeLost: 0.75
         case .bonus: 0.6
+        case .bomb: 0.9
         }
     }
 
@@ -154,6 +155,7 @@ enum SoundEffect: CaseIterable {
         if e.waveCleared { out.append(.waveClear) }
         if e.lifeLost { out.append(.lifeLost) }
         if e.bonusLife { out.append(.bonus) }
+        out += [SoundEffect](repeating: .bomb, count: e.bombs)
         return out
     }
 
@@ -214,6 +216,17 @@ enum SoundEffect: CaseIterable {
                 let tone: Double = sin(twoPi * f * t) * 0.6
                 let sub: Double = sin(twoPi * f * 0.5 * t) * 0.5
                 return (tone + sub) * exp(-t * 3) * 0.7
+            }
+        case .bomb:
+            // Deep sub boom with a long, dark noise sweep falling away.
+            var lowPass = 0.0
+            return SoundEffect.samples(sampleRate: sampleRate, seconds: 1.1) { t, _ in
+                let cutoff: Double = 0.5 * exp(-t * 4) + 0.02
+                lowPass += (white() - lowPass) * cutoff
+                let rumble: Double = lowPass * exp(-t * 2.2)
+                let subHz: Double = 36 + 90 * exp(-t * 12)
+                let sub: Double = sin(twoPi * subHz * t) * exp(-t * 2.5)
+                return (rumble * 0.8 + sub * 0.9) * 0.95
             }
         case .bonus:
             // Two ascending blips.

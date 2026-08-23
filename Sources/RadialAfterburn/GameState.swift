@@ -49,6 +49,7 @@ struct FrameEvents {
     var waveCleared = false
     var lifeLost = false
     var bonusLife = false
+    var bombs = 0
 }
 
 struct Shot: Identifiable {
@@ -93,6 +94,9 @@ struct GameState {
     private(set) var highScore = 0
     private(set) var lives = 3
     private(set) var wave = 1
+    /// Screen-clearing bombs; refilled to `bombsPerWave` at the start of each wave.
+    private(set) var bombs = 0
+    static let bombsPerWave = 2
     private(set) var enemies: [Enemy] = []
     private(set) var shots: [Shot] = []
     private(set) var muzzleFlashes: [MuzzleFlash] = []
@@ -172,6 +176,35 @@ struct GameState {
         shotCooldown = max(0.075, 0.15 - Float(wave) * 0.004)
     }
 
+    /// Detonate a bomb: every enemy on screen explodes (tankers don't split), the
+    /// combo ticks once, and the whole tube kicks.
+    mutating func bomb() {
+        guard phase == .playing, bombs > 0, !enemies.isEmpty else { return }
+        bombs -= 1
+        for enemy in enemies {
+            score += enemy.kind.score * combo
+            emitExplosion(lane: enemy.lane, depth: enemy.depth, kind: enemy.kind)
+            events.explosions += 1
+        }
+        highScore = max(highScore, score)
+        combo = min(combo + 1, 9)
+        comboPulse = 1
+        enemies.removeAll()
+        flash = 1
+        screenShake = 1
+        tunnelKick = 1
+        hitStop = max(hitStop, 0.16)
+        events.bombs += 1
+        emitShockwave(
+            position: TunnelGeometry.worldPoint(lane: playerLane, depth: 0.06, wave: wave),
+            radius: 0.1,
+            speed: 3.2,
+            life: 0.9,
+            color: SIMD4(1, 0.85, 0.3, 1)
+        )
+        awardBonusLives()
+    }
+
     mutating func update(deltaTime rawDeltaTime: Float) {
         let deltaTime = min(rawDeltaTime, 1 / 20)
 
@@ -220,7 +253,7 @@ struct GameState {
         if enemiesRemaining > 0, spawnTimer <= 0 {
             spawnEnemy()
             enemiesRemaining -= 1
-            spawnTimer = max(0.18, 0.72 - Float(wave) * 0.035)
+            spawnTimer = max(0.16, 0.6 - Float(wave) * 0.03)
         }
 
         let enemySpeed = 0.075 + Float(wave) * 0.006
@@ -266,11 +299,17 @@ struct GameState {
     }
 
     private mutating func beginWave() {
-        enemiesRemaining = 7 + wave * 3
+        bombs = Self.bombsPerWave
+        enemiesRemaining = 9 + wave * 4
         spawnTimer = wave == 1 ? 0.8 : 1.5
+        // A few enemies start part-way down the tube so the wave engages sooner.
+        for i in 0..<3 {
+            spawnEnemy(depth: 0.72 + Float(i) * 0.1)
+            enemiesRemaining -= 1
+        }
     }
 
-    private mutating func spawnEnemy() {
+    private mutating func spawnEnemy(depth: Float = 1) {
         let roll = random.nextFloat()
         let kind: EnemyKind
         if wave >= 4, roll > 0.82 {
@@ -286,7 +325,7 @@ struct GameState {
             Enemy(
                 id: UUID(),
                 lane: lane,
-                depth: 1,
+                depth: depth,
                 kind: kind,
                 phase: random.nextFloat(),
                 visualLane: Float(lane)
@@ -336,7 +375,10 @@ struct GameState {
         enemies.removeAll { destroyedEnemies.contains($0.id) }
         enemies.append(contentsOf: spawnedEnemies)
         shots.removeAll { destroyedShots.contains($0.id) }
+        awardBonusLives()
+    }
 
+    private mutating func awardBonusLives() {
         while score >= nextBonusLife {
             lives += 1
             nextBonusLife += 25_000
@@ -383,18 +425,31 @@ struct GameState {
         let shockSpeed: Float
         switch kind {
         case .spike:
-            sparkCount = 18
-            shockRadius = 0.035
-            shockSpeed = 0.72
+            sparkCount = 30
+            shockRadius = 0.04
+            shockSpeed = 0.85
         case .flipper:
-            sparkCount = 24
-            shockRadius = 0.045
-            shockSpeed = 0.9
-        case .tanker:
             sparkCount = 40
-            shockRadius = 0.07
-            shockSpeed = 1.12
+            shockRadius = 0.05
+            shockSpeed = 1.0
+        case .tanker:
+            sparkCount = 64
+            shockRadius = 0.08
+            shockSpeed = 1.25
         }
+
+        // Bright core flash: a fat, stationary, short-lived spark.
+        sparks.append(
+            Spark(
+                id: UUID(),
+                position: origin,
+                velocity: SIMD3(0, 0, 0),
+                life: 0.14,
+                initialLife: 0.14,
+                scale: kind == .tanker ? 9 : 6,
+                color: SIMD4(1, 1, 1, 1) * 0.5 + color * 0.5
+            )
+        )
 
         emitShockwave(
             position: origin,
@@ -406,9 +461,9 @@ struct GameState {
 
         for index in 0..<sparkCount {
             let angle = random.nextFloat() * .pi * 2
-            let speed = 0.18 + random.nextFloat() * (kind == .tanker ? 0.9 : 0.62)
-            let life = 0.28 + random.nextFloat() * (kind == .tanker ? 0.72 : 0.52)
-            let scale = 0.7 + random.nextFloat() * (index % 3 == 0 ? 1.9 : 1.1)
+            let speed = 0.2 + random.nextFloat() * (kind == .tanker ? 1.1 : 0.8)
+            let life = 0.3 + random.nextFloat() * (kind == .tanker ? 0.8 : 0.6)
+            let scale = 0.8 + random.nextFloat() * (index % 3 == 0 ? 2.2 : 1.3)
             let zKick = (random.nextFloat() - 0.5) * speed * 0.6
             sparks.append(
                 Spark(
