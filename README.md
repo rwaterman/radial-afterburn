@@ -6,8 +6,9 @@ distance fog, a glowing core, a streaming starfield, per-wave color palettes,
 and a bloom post-process pass — all generated procedurally in code, with no
 game engine or bundled assets. The textures, geometry, ships, particles, HUD,
 sound effects, and the soundtrack all come from code. Player and enemy lane
-changes slide rather than snap, the camera leans and lunges with the action,
-and heavy hits briefly freeze the world for impact.
+changes slide rather than snap, the ship trails twin afterburner plumes that
+flare when it moves, the camera leans and lunges with the action, and heavy
+hits briefly freeze the world for impact.
 
 The soundtrack is a Sega Genesis / Mega Drive-style FM track synthesized at
 launch: a YM2612-flavoured four-operator FM engine (all eight chip algorithms,
@@ -90,7 +91,7 @@ GPU or an audio device, so they run on CI.
 | Left / A | Move counter-clockwise |
 | Right / D | Move clockwise |
 | Space | Fire |
-| B / ↓ | Bomb — destroys every enemy on screen (two per wave) |
+| Control / Option | Bomb — destroys every enemy on screen (two per wave) |
 | P | Pause |
 | M | Music on / off |
 | Return | Start (from the title or game-over screen) |

@@ -6,6 +6,7 @@ final class MetalGameView: MTKView, MTKViewDelegate {
     private(set) var renderer: Renderer?
     private var audio: GameAudio?
     private var heldKeys = Set<UInt16>()
+    private var heldModifiers: NSEvent.ModifierFlags = []
     private var inputTimer: Timer?
 
     override var acceptsFirstResponder: Bool { true }
@@ -57,8 +58,6 @@ final class MetalGameView: MTKView, MTKViewDelegate {
             audio?.toggleMusic()
         case 49:
             renderer?.game.fire()
-        case 11, 125:
-            renderer?.game.bomb()
         case 53:
             NSApplication.shared.terminate(nil)
         default:
@@ -70,10 +69,20 @@ final class MetalGameView: MTKView, MTKViewDelegate {
         heldKeys.remove(event.keyCode)
     }
 
+    /// Bomb on Control or Option. Modifiers arrive here, not in keyDown; fire on
+    /// the press edge so holding the key doesn't chain bombs.
+    override func flagsChanged(with event: NSEvent) {
+        let bombKeys: NSEvent.ModifierFlags = [.control, .option]
+        let pressed = event.modifierFlags.intersection(bombKeys)
+        if !pressed.subtracting(heldModifiers).isEmpty { renderer?.game.bomb() }
+        heldModifiers = pressed
+    }
+
     /// keyUp never arrives for keys held while focus moves away; forget them so the
     /// ship doesn't keep sliding or firing when focus returns.
     override func resignFirstResponder() -> Bool {
         heldKeys.removeAll()
+        heldModifiers = []
         return super.resignFirstResponder()
     }
 

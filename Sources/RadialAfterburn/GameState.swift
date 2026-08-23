@@ -87,6 +87,8 @@ struct Shockwave: Identifiable {
 
 struct GameState {
     static let laneCount = TunnelGeometry.laneCount
+    /// Where the ship sits along the tube — far enough in that its afterburners show.
+    static let shipDepth: Float = 0.09
 
     private(set) var phase: GamePhase = .title
     private(set) var playerLane = 0
@@ -101,6 +103,8 @@ struct GameState {
     private(set) var shots: [Shot] = []
     private(set) var muzzleFlashes: [MuzzleFlash] = []
     private(set) var sparks: [Spark] = []
+    /// Afterburner exhaust specks; separate from `sparks` so explosion logic stays clean.
+    private(set) var exhaust: [Spark] = []
     private(set) var shockwaves: [Shockwave] = []
     private(set) var flash: Float = 0
     private(set) var combo = 1
@@ -133,6 +137,7 @@ struct GameState {
         shots = []
         muzzleFlashes = []
         sparks = []
+        exhaust = []
         shockwaves = []
         flash = 0
         combo = 1
@@ -169,7 +174,7 @@ struct GameState {
 
     mutating func fire() {
         guard phase == .playing, shotCooldown <= 0 else { return }
-        shots.append(Shot(id: UUID(), lane: playerLane, depth: 0.04))
+        shots.append(Shot(id: UUID(), lane: playerLane, depth: Self.shipDepth))
         muzzleFlashes.append(MuzzleFlash(id: UUID(), lane: playerLane, life: 0.12, initialLife: 0.12))
         screenShake = min(1, screenShake + 0.01)
         events.shotsFired += 1
@@ -196,7 +201,7 @@ struct GameState {
         hitStop = max(hitStop, 0.16)
         events.bombs += 1
         emitShockwave(
-            position: TunnelGeometry.worldPoint(lane: playerLane, depth: 0.06, wave: wave),
+            position: TunnelGeometry.worldPoint(lane: playerLane, depth: Self.shipDepth, wave: wave),
             radius: 0.1,
             speed: 3.2,
             life: 0.9,
@@ -237,6 +242,12 @@ struct GameState {
             next.life -= deltaTime
             return next.life > 0 ? next : nil
         }
+        exhaust = exhaust.compactMap { speck in
+            var next = speck
+            next.position += next.velocity * deltaTime
+            next.life -= deltaTime
+            return next.life > 0 ? next : nil
+        }
         shockwaves = shockwaves.compactMap { shockwave in
             var next = shockwave
             next.radius += next.speed * deltaTime
@@ -246,6 +257,7 @@ struct GameState {
 
         guard phase == .playing else { return }
 
+        emitExhaust(deltaTime: deltaTime)
         shotCooldown -= deltaTime
         laneMoveCooldown -= deltaTime
         spawnTimer -= simDelta
@@ -474,6 +486,34 @@ struct GameState {
                     initialLife: life,
                     scale: scale,
                     color: color
+                )
+            )
+        }
+    }
+
+    /// Afterburner exhaust: a steady stream of hot specks blown back from the ship
+    /// toward the camera, heavier while the ship is sliding.
+    private var exhaustAccumulator: Float = 0
+    private mutating func emitExhaust(deltaTime: Float) {
+        let rate: Float = 70 + min(1, abs(cameraLaneVel) * 0.25) * 80
+        exhaustAccumulator += deltaTime * rate
+        let origin = TunnelGeometry.worldPoint(laneFraction: playerVisualLane, depth: Self.shipDepth - 0.015, wave: wave)
+        let angle = TunnelGeometry.angle(laneFraction: playerVisualLane)
+        let inward = SIMD3<Float>(-cos(angle), -sin(angle), 0)
+        while exhaustAccumulator >= 1 {
+            exhaustAccumulator -= 1
+            let life = 0.18 + random.nextFloat() * 0.2
+            let spread = SIMD3<Float>(random.nextFloat() - 0.5, random.nextFloat() - 0.5, 0) * 0.35
+            let hot = random.nextFloat()
+            exhaust.append(
+                Spark(
+                    id: UUID(),
+                    position: origin + inward * 0.08,
+                    velocity: SIMD3<Float>(0, 0, 1.6 + random.nextFloat() * 1.2) + spread,
+                    life: life,
+                    initialLife: life,
+                    scale: 0.35 + hot * 0.5,
+                    color: SIMD4(1, 0.45 + 0.5 * hot, 0.15 + 0.5 * hot * hot, 1)
                 )
             )
         }

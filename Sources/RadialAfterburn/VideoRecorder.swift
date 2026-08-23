@@ -100,7 +100,6 @@ func runGIF(path: String, seconds: Int, width: Int, height: Int) -> Bool {
         switch hit.effect {
         case .explosion: score[hit.frame] += 1
         case .bigExplosion: score[hit.frame] += 2
-        case .waveClear: score[hit.frame] += 6
         case .bomb: score[hit.frame] += 12
         default: break
         }
@@ -115,8 +114,9 @@ func runGIF(path: String, seconds: Int, width: Int, height: Int) -> Bool {
     }
     // A bomb is the showpiece: if one fired, frame it 60% of the way through the
     // loop so the build-up and the aftermath both show.
-    if let bomb = run.hits.first(where: { $0.effect == .bomb && $0.frame >= earliest })?.frame {
-        best = max(earliest, min(bomb - window * 6 / 10, score.count - window))
+    let leadIn = window * 6 / 10
+    if let bomb = run.hits.first(where: { $0.effect == .bomb && $0.frame - leadIn >= earliest })?.frame {
+        best = min(bomb - leadIn, score.count - window)
     }
     let frames = Swift.stride(from: best, to: min(best + window, run.snapshots.count), by: stride)
 
@@ -288,7 +288,7 @@ private struct ScriptedPlayer {
         // Panic bomb: several enemies about to breach, or the tube is swarming.
         let nearRim = game.enemies.filter { $0.depth < 0.22 }.count
         let visible = game.enemies.filter { $0.depth < 0.55 }.count
-        if game.bombs > 0, nearRim >= 2 || visible >= 5 {
+        if game.bombs > 0, nearRim >= 2 || visible >= 4 {
             game.bomb()
             targetID = nil
             return
@@ -393,7 +393,7 @@ private func drawHUD(into bgra: inout [UInt8], width: Int, height: Int, game: Ga
             : String(format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   BOMBS %d   ×%d", game.score, game.highScore, game.wave, game.lives, game.bombs, game.combo)
         draw(scoreLine, size: compact ? 13 : 16, bold: true, color: scoreColor, x: compact ? 14 : 24, y: compact ? 26 : 36)
         if !compact {
-            draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   B/↓  BOMB   P  PAUSE   M  MUSIC",
+            draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   CTRL/⌥  BOMB   P  PAUSE   M  MUSIC",
                  size: 12, bold: false, color: CGColor(red: 0.25, green: 0.85, blue: 1, alpha: 0.8), x: nil, y: CGFloat(height) - 22)
         }
 
