@@ -158,6 +158,13 @@ if let idx = arguments.firstIndex(of: "--screenshot") {
     }
     exit(ok ? 0 : 1)
 }
+if let idx = arguments.firstIndex(of: "--gif") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "demo.gif"
+    let ok = MainActor.assumeIsolated {
+        runGIF(path: path, seconds: intArg("--seconds", 6), width: intArg("--width", 550), height: intArg("--height", 380))
+    }
+    exit(ok ? 0 : 1)
+}
 if let idx = arguments.firstIndex(of: "--record") {
     let path = idx + 1 < arguments.count ? arguments[idx + 1] : "demo.mp4"
     let ok = MainActor.assumeIsolated {

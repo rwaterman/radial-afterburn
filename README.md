@@ -22,16 +22,20 @@ lanes, and clear each wave before enemies break through to the edge.
 
 ## Demo
 
-<!-- Inline player: drag radial-afterburn-demo.mp4 into this file in GitHub's web
-     editor and paste the user-attachments URL it inserts on its own line here. -->
+![Six seconds of wave 2: flippers, shockwaves, and a ×9 combo](docs/media/demo.gif)
 
 [Watch the 30-second demo with sound (MP4)](https://github.com/rwaterman/radial-afterburn/releases/latest/download/radial-afterburn-demo.mp4)
 
-The demo is rendered from code too — a scripted player, offscreen Metal frames
-with the HUD composited in, and the soundtrack and SFX mixed to the same clock:
+<!-- Inline player: drag radial-afterburn-demo.mp4 into this file in GitHub's web
+     editor and paste the user-attachments URL it inserts on its own line here. -->
+
+Both are rendered from code — a scripted player, offscreen Metal frames with
+the HUD composited in, and (for the video) the soundtrack and SFX mixed to the
+same clock. The GIF picks the busiest six seconds of a scripted run on its own:
 
 ```sh
 swift run -c release RadialAfterburn --record demo.mp4 --seconds 30
+swift run -c release RadialAfterburn --gif demo.gif --seconds 6
 ```
 
 ## Requirements
@@ -118,8 +122,8 @@ Enemy types:
 - `Shaders.swift`: runtime-compiled Metal shaders (textured-lit, neon line, bloom)
 - `Screenshot.swift`: headless `--screenshot` PNG renderer
 - `MetalGameView.swift`: input and frame timing
-- `VideoRecorder.swift`: headless `--record` gameplay capture (H.264 + AAC via AVAssetWriter)
-- `main.swift`: AppKit window, HUD, application setup, and the `--screenshot` / `--export-music` / `--record` entry points
+- `VideoRecorder.swift`: headless `--record` (H.264 + AAC via AVAssetWriter) and `--gif` (ImageIO) gameplay capture
+- `main.swift`: AppKit window, HUD, application setup, and the `--screenshot` / `--export-music` / `--record` / `--gif` entry points
 - `Tests/RadialAfterburnTests`: simulation, projection-math, and soundtrack tests
 - `docs/design`: the renderer design note
 

@@ -37,19 +37,17 @@ func runScreenshot(path: String, frames: Int, width: Int, height: Int) -> Bool {
     return writePNG(bgra: bgra, width: width, height: height, path: path)
 }
 
+/// Wrap a BGRA readback as a CGImage without reordering bytes.
+func makeCGImage(bgra: [UInt8], width: Int, height: Int) -> CGImage? {
+    guard let provider = CGDataProvider(data: Data(bgra) as CFData) else { return nil }
+    let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+    return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+                   space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info,
+                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+}
+
 private func writePNG(bgra: [UInt8], width: Int, height: Int, path: String) -> Bool {
-    // Convert BGRA -> RGBA for CGImage.
-    var rgba = [UInt8](repeating: 0, count: bgra.count)
-    for p in stride(from: 0, to: bgra.count, by: 4) {
-        rgba[p] = bgra[p + 2]; rgba[p + 1] = bgra[p + 1]; rgba[p + 2] = bgra[p]; rgba[p + 3] = bgra[p + 3]
-    }
-    let cs = CGColorSpaceCreateDeviceRGB()
-    guard let provider = CGDataProvider(data: Data(rgba) as CFData),
-          let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
-                              bytesPerRow: width * 4, space: cs,
-                              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                              provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-    else { return false }
+    guard let image = makeCGImage(bgra: bgra, width: width, height: height) else { return false }
     let url = URL(fileURLWithPath: path) as CFURL
     guard let dest = CGImageDestinationCreateWithURL(url, UTType.png.identifier as CFString, 1, nil) else { return false }
     CGImageDestinationAddImage(dest, image, nil)

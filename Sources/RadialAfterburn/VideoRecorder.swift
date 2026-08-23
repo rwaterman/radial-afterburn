@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreText
 import Metal
+import UniformTypeIdentifiers
 
 /// Headless gameplay capture: a scripted player runs a deterministic game, every
 /// frame is rendered offscreen with the HUD composited in, and the soundtrack plus
@@ -8,45 +9,13 @@ import Metal
 /// `AVAssetWriter`, so it needs no screen-recording permission and no ffmpeg.
 @MainActor
 func runRecording(path: String, seconds: Int, width: Int, height: Int) -> Bool {
-    guard let device = MTLCreateSystemDefaultDevice() else {
-        FileHandle.standardError.write(Data("record: no Metal device\n".utf8))
-        return false
-    }
-    let renderer: Renderer
-    do {
-        renderer = try Renderer(device: device, colorPixelFormat: .bgra8Unorm)
-    } catch {
-        FileHandle.standardError.write(Data("record: \(error)\n".utf8))
-        return false
-    }
-
     let fps = 60
-    let dt = 1 / Float(fps)
-    let frameCount = max(1, seconds * fps)
+    guard let renderer = makeHeadlessRenderer(),
+          let run = simulate(renderer: renderer, seconds: seconds, fps: fps) else { return false }
     let sampleRate = GameAudio.sampleRate
     let samplesPerFrame = Int(sampleRate) / fps
-
-    // Pass 1: simulate. Keep a snapshot per frame for rendering, and build the
-    // audio timeline (layer volumes per frame, SFX hit positions).
-    var snapshots: [GameState] = []
-    snapshots.reserveCapacity(frameCount)
-    var volumes = [[Float]]()
-    var current = [Float](repeating: 0, count: GameAudio.fullMix.count)
-    var hits: [(effect: SoundEffect, sample: Int)] = []
-    var player = ScriptedPlayer()
-    for frame in 0..<frameCount {
-        player.act(on: &renderer.game, frame: frame)
-        renderer.game.update(deltaTime: dt)
-        for effect in SoundEffect.triggered(by: renderer.game.events) {
-            hits.append((effect, frame * samplesPerFrame))
-        }
-        renderer.game.drainEvents()
-        GameAudio.ease(&current, toward: GameAudio.mix(phase: renderer.game.phase, wave: renderer.game.wave), deltaTime: dt)
-        volumes.append(current)
-        snapshots.append(renderer.game)
-    }
-
-    let audio = mixAudio(frames: frameCount, samplesPerFrame: samplesPerFrame, volumes: volumes, hits: hits, sampleRate: sampleRate)
+    let hits = run.hits.map { (effect: $0.effect, sample: $0.frame * samplesPerFrame) }
+    let audio = mixAudio(frames: run.snapshots.count, samplesPerFrame: samplesPerFrame, volumes: run.volumes, hits: hits, sampleRate: sampleRate)
 
     // Pass 2: encode video and audio as separate files, then mux. AVAssetWriter
     // deadlocks when one writer interleaves a polled video input with an AAC input
@@ -59,11 +28,105 @@ func runRecording(path: String, seconds: Int, width: Int, height: Int) -> Bool {
         try? FileManager.default.removeItem(at: videoURL)
         try? FileManager.default.removeItem(at: audioURL)
     }
-    guard writeVideo(to: videoURL, renderer: renderer, snapshots: snapshots, width: width, height: height, fps: fps),
+    guard writeVideo(to: videoURL, renderer: renderer, snapshots: run.snapshots, width: width, height: height, fps: fps),
           writeAudio(to: audioURL, samples: audio, sampleRate: sampleRate),
           mux(video: videoURL, audio: audioURL, into: url)
     else { return false }
     return true
+}
+
+/// A wave-1 game takes several seconds before anything reaches the visible part of
+/// the tunnel, so captures start `preroll` seconds into play and show the title
+/// as a fading overlay instead of a wait.
+private let prerollSeconds: Float = 8.5
+
+/// "RADIAL AFTERBURN" overlay opacity: on for two seconds, then a half-second fade.
+private func titleFade(frame: Int, fps: Int) -> CGFloat {
+    let t = CGFloat(frame) / CGFloat(fps)
+    return max(0, min(1, (2.5 - t) * 2))
+}
+
+struct SimulatedRun {
+    var snapshots: [GameState]
+    var volumes: [[Float]]
+    var hits: [(effect: SoundEffect, frame: Int)]
+}
+
+@MainActor
+private func makeHeadlessRenderer() -> Renderer? {
+    guard let device = MTLCreateSystemDefaultDevice() else { _ = report("no Metal device", nil); return nil }
+    do { return try Renderer(device: device, colorPixelFormat: .bgra8Unorm) } catch { _ = report("renderer", error); return nil }
+}
+
+/// Run the scripted player for `seconds`, after a pre-roll that is simulated but
+/// not kept. Returns a snapshot per frame, the eased music mix per frame, and
+/// the SFX that fired, for the renderer and the audio mixer to replay.
+@MainActor
+private func simulate(renderer: Renderer, seconds: Int, fps: Int) -> SimulatedRun? {
+    let dt = 1 / Float(fps)
+    let prerollFrames = Int(prerollSeconds * Float(fps))
+    let frameCount = max(1, seconds * fps)
+    var run = SimulatedRun(snapshots: [], volumes: [], hits: [])
+    run.snapshots.reserveCapacity(frameCount)
+    var mix = [Float](repeating: 0, count: GameAudio.fullMix.count)
+    var player = ScriptedPlayer()
+    renderer.game.start()
+    for frame in -prerollFrames..<frameCount {
+        player.act(on: &renderer.game, frame: frame)
+        renderer.game.update(deltaTime: dt)
+        GameAudio.ease(&mix, toward: GameAudio.mix(phase: renderer.game.phase, wave: renderer.game.wave), deltaTime: dt)
+        if frame >= 0 {
+            run.hits += SoundEffect.triggered(by: renderer.game.events).map { (effect: $0, frame: frame) }
+            run.volumes.append(mix)
+            run.snapshots.append(renderer.game)
+        }
+        renderer.game.drainEvents()
+    }
+    return run
+}
+
+/// Looping GIF of the busiest stretch of a scripted run: simulate a long game,
+/// score every `seconds`-long window by explosions and wave clears, and encode
+/// the winner with ImageIO.
+@MainActor
+func runGIF(path: String, seconds: Int, width: Int, height: Int) -> Bool {
+    let fps = 15
+    guard let renderer = makeHeadlessRenderer(),
+          let run = simulate(renderer: renderer, seconds: 40, fps: fps) else { return false }
+    let window = max(1, seconds * fps)
+    var score = [Int](repeating: 0, count: run.snapshots.count)
+    for hit in run.hits {
+        switch hit.effect {
+        case .explosion: score[hit.frame] += 1
+        case .bigExplosion: score[hit.frame] += 2
+        case .waveClear: score[hit.frame] += 6
+        default: break
+        }
+    }
+    // Wave 2 onward has flippers and the palette shift; wave 1 reads as tiny dots.
+    let earliest = run.snapshots.firstIndex { $0.wave >= 2 } ?? 0
+    var best = earliest, bestScore = -1, rolling = 0
+    for frame in earliest..<score.count {
+        rolling += score[frame]
+        if frame >= earliest + window { rolling -= score[frame - window] }
+        if frame >= earliest + window - 1, rolling > bestScore { bestScore = rolling; best = frame - window + 1 }
+    }
+    let frames = best..<min(best + window, run.snapshots.count)
+
+    let url = URL(fileURLWithPath: path) as CFURL
+    guard let destination = CGImageDestinationCreateWithURL(url, UTType.gif.identifier as CFString, frames.count, nil)
+    else { return report("cannot create GIF at \(path)", nil) }
+    CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+    let frameProperties = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / Double(fps)]] as CFDictionary
+    for frame in frames {
+        renderer.game = run.snapshots[frame]
+        var bgra = renderer.renderSnapshot(width: width, height: height, time: Float(frame) / Float(fps))
+        guard bgra.count == width * height * 4 else { return report("render failed at frame \(frame)", nil) }
+        drawHUD(into: &bgra, width: width, height: height, game: run.snapshots[frame], titleAlpha: 0)
+        guard let image = makeCGImage(bgra: bgra, width: width, height: height) else { return report("image failed at frame \(frame)", nil) }
+        CGImageDestinationAddImage(destination, image, frameProperties)
+    }
+    return CGImageDestinationFinalize(destination) || report("GIF finalize failed", nil)
 }
 
 private func report(_ message: String, _ error: Error?) -> Bool {
@@ -99,7 +162,7 @@ private func writeVideo(to url: URL, renderer: Renderer, snapshots: [GameState],
         renderer.game = snapshot
         var bgra = renderer.renderSnapshot(width: width, height: height, time: Float(frame) * dt)
         guard bgra.count == width * height * 4 else { return report("render failed at frame \(frame)", nil) }
-        drawHUD(into: &bgra, width: width, height: height, game: snapshot)
+        drawHUD(into: &bgra, width: width, height: height, game: snapshot, titleAlpha: titleFade(frame: frame, fps: fps))
 
         guard let pool = adaptor.pixelBufferPool else { return report("no pixel buffer pool", writer.error) }
         var pixelBuffer: CVPixelBuffer?
@@ -202,16 +265,13 @@ private func mux(video videoURL: URL, audio audioURL: URL, into url: URL) -> Boo
 
 /// Plays like a decent human rather than an aimbot: lets enemies come into view
 /// before engaging, sticks with a target instead of flicking between them, and
-/// only fires when lined up. Starts the game a beat after the title appears.
+/// only fires when lined up.
 private struct ScriptedPlayer {
     private var targetID: UUID?
 
     mutating func act(on game: inout GameState, frame: Int) {
         switch game.phase {
-        case .title:
-            if frame >= 100 { game.start() }
-            return
-        case .gameOver:
+        case .title, .gameOver:
             game.start()
             return
         case .paused, .playing:
@@ -290,7 +350,7 @@ private func audioSampleBuffer(_ samples: [Float], startSample: Int, sampleRate:
 
 /// Composite the same HUD the AppKit window shows (score line, status banner,
 /// help bar) onto a BGRA frame with CoreText.
-private func drawHUD(into bgra: inout [UInt8], width: Int, height: Int, game: GameState) {
+private func drawHUD(into bgra: inout [UInt8], width: Int, height: Int, game: GameState, titleAlpha: CGFloat) {
     bgra.withUnsafeMutableBytes { raw in
         guard let ctx = CGContext(data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
                                   space: CGColorSpaceCreateDeviceRGB(),
@@ -311,17 +371,25 @@ private func drawHUD(into bgra: inout [UInt8], width: Int, height: Int, game: Ga
 
         let comboGlow = CGFloat(max(0, min(1, game.comboPulse)))
         let scoreColor = CGColor(red: 0.2 + comboGlow * 0.8, green: 0.95, blue: 1 - comboGlow * 0.65, alpha: 1)
-        draw(String(format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   ×%d",
-                    game.score, game.highScore, game.wave, game.lives, game.combo),
-             size: 16, bold: true, color: scoreColor, x: 24, y: 36)
-        draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC",
-             size: 12, bold: false, color: CGColor(red: 0.25, green: 0.85, blue: 1, alpha: 0.8), x: nil, y: CGFloat(height) - 22)
+        // Small frames (GIF) get a compact score line and no help bar.
+        let compact = width < 800
+        let scoreLine = compact
+            ? String(format: "SCORE %08d   WAVE %02d   ×%d", game.score, game.wave, game.combo)
+            : String(format: "SCORE %08d   HIGH %08d   WAVE %02d   LIVES %d   ×%d", game.score, game.highScore, game.wave, game.lives, game.combo)
+        draw(scoreLine, size: compact ? 13 : 16, bold: true, color: scoreColor, x: compact ? 14 : 24, y: compact ? 26 : 36)
+        if !compact {
+            draw("←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC",
+                 size: 12, bold: false, color: CGColor(red: 0.25, green: 0.85, blue: 1, alpha: 0.8), x: nil, y: CGFloat(height) - 22)
+        }
 
         let centerY = CGFloat(height) / 2 - 20
+        if titleAlpha > 0 {
+            draw("RADIAL AFTERBURN", size: 44, bold: true, color: CGColor(red: 1, green: 0.12, blue: 0.62, alpha: titleAlpha), x: nil, y: centerY - 60)
+        }
         switch game.phase {
         case .title:
             draw("RADIAL AFTERBURN\n\nPRESS RETURN", size: 34, bold: true, color: CGColor(red: 1, green: 0.12, blue: 0.62, alpha: 1), x: nil, y: centerY - 34)
-        case .playing where game.waveBanner > 0:
+        case .playing where game.waveBanner > 0 && titleAlpha == 0:
             let glow = CGFloat(max(0, min(1, game.waveBanner)))
             draw(String(format: "WAVE %02d", game.wave), size: 34, bold: true,
                  color: CGColor(red: 0.2 + glow * 0.8, green: 1, blue: 0.85, alpha: 0.35 + glow * 0.65), x: nil, y: centerY)
