@@ -157,26 +157,30 @@ enum SoundEffect: CaseIterable {
         return out
     }
 
+    // Kept as small typed steps: Swift 6.1's type checker gives up on the
+    // literal-heavy one-liners these started as.
     func render(sampleRate: Double) -> [Float] {
         var random = SeededRandom(seed: 0x5f78)
         func white() -> Double { Double(random.nextFloat()) * 2 - 1 }
+        let twoPi: Double = 2 * .pi
         switch self {
         case .fire:
             // Short descending zap with a noisy attack click.
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.14) { t, i in
-                let phase = 2 * .pi * (880.0 * t + 0.5 * -3600.0 * t * t)
-                let body = sin(phase)
-                let square = body >= 0 ? 1.0 : -1.0
-                let click = i < 60 ? white() * exp(-t * 90) * 0.4 : 0
-                return (body * 0.7 + square * 0.25 + click) * exp(-t * 16) * 0.5
+                let sweep: Double = 880 * t - 1800 * t * t
+                let body: Double = sin(twoPi * sweep)
+                let square: Double = body >= 0 ? 1 : -1
+                let click: Double = i < 60 ? white() * exp(-t * 90) * 0.4 : 0
+                let mix: Double = body * 0.7 + square * 0.25 + click
+                return mix * exp(-t * 16) * 0.5
             }
         case .explosion:
             // Filtered noise crackle over a low thump.
             var lowPass = 0.0
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.35) { t, _ in
                 lowPass += (white() - lowPass) * 0.22
-                let crackle = lowPass * exp(-t * 8)
-                let thump = sin(2 * .pi * 95 * t) * exp(-t * 6)
+                let crackle: Double = lowPass * exp(-t * 8)
+                let thump: Double = sin(twoPi * 95 * t) * exp(-t * 6)
                 return (crackle * 0.8 + thump * 0.6) * 0.85
             }
         case .bigExplosion:
@@ -184,36 +188,40 @@ enum SoundEffect: CaseIterable {
             var lowPass = 0.0
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.6) { t, _ in
                 lowPass += (white() - lowPass) * 0.14
-                let crackle = lowPass * exp(-t * 4.5)
-                let thump = (sin(2 * .pi * 55 * t) + sin(2 * .pi * 40 * t) * 0.6) * exp(-t * 4)
-                let sweep = sin(2 * .pi * (120 - 80 * t) * t) * exp(-t * 5) * 0.3
+                let crackle: Double = lowPass * exp(-t * 4.5)
+                let sub: Double = sin(twoPi * 55 * t) + sin(twoPi * 40 * t) * 0.6
+                let thump: Double = sub * exp(-t * 4)
+                let sweepHz: Double = 120 - 80 * t
+                let sweep: Double = sin(twoPi * sweepHz * t) * exp(-t * 5) * 0.3
                 return (crackle * 0.7 + thump * 0.7 + sweep) * 0.9
             }
         case .waveClear:
             // Rising triad with shimmer — soft attack, slow tail.
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.7) { t, _ in
-                let env = min(1, t * 8) * exp(-t * 2.2)
-                let f = 330.0 + 500.0 * t
-                let chord = sin(2 * .pi * f * t) * 0.4
-                    + sin(2 * .pi * f * 1.5 * t) * 0.3
-                    + sin(2 * .pi * f * 2 * t) * 0.2
-                let shimmer = sin(2 * .pi * (1800 + 600 * sin(2 * .pi * 6 * t)) * t) * 0.15
-                return (chord + shimmer) * env * 0.6
+                let env: Double = min(1, t * 8) * exp(-t * 2.2)
+                let f: Double = 330 + 500 * t
+                let root: Double = sin(twoPi * f * t) * 0.4
+                let fifth: Double = sin(twoPi * f * 1.5 * t) * 0.3
+                let octave: Double = sin(twoPi * f * 2 * t) * 0.2
+                let shimmerHz: Double = 1800 + 600 * sin(twoPi * 6 * t)
+                let shimmer: Double = sin(twoPi * shimmerHz * t) * 0.15
+                return (root + fifth + octave + shimmer) * env * 0.6
             }
         case .lifeLost:
             // Descending tone with a sub octave.
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.5) { t, _ in
-                let f = 520.0 - 360.0 * t
-                let tone = sin(2 * .pi * f * t) * 0.6 + sin(2 * .pi * f * 0.5 * t) * 0.5
-                return tone * exp(-t * 3) * 0.7
+                let f: Double = 520 - 360 * t
+                let tone: Double = sin(twoPi * f * t) * 0.6
+                let sub: Double = sin(twoPi * f * 0.5 * t) * 0.5
+                return (tone + sub) * exp(-t * 3) * 0.7
             }
         case .bonus:
             // Two ascending blips.
             return SoundEffect.samples(sampleRate: sampleRate, seconds: 0.4) { t, _ in
                 let second = t >= 0.18
-                let seg = second ? t - 0.18 : t
-                let f = second ? 1320.0 : 880.0
-                return sin(2 * .pi * f * seg) * exp(-seg * 14) * 0.5
+                let seg: Double = second ? t - 0.18 : t
+                let f: Double = second ? 1320 : 880
+                return sin(twoPi * f * seg) * exp(-seg * 14) * 0.5
             }
         }
     }
