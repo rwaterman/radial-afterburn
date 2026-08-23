@@ -6,7 +6,7 @@ final class GameViewController: NSViewController {
     private var gameView: MetalGameView!
     private let scoreLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE")
+    private let helpLabel = NSTextField(labelWithString: "←/A  MOVE   →/D  MOVE   SPACE  FIRE   P  PAUSE   M  MUSIC")
 
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 760))
@@ -93,7 +93,7 @@ final class GameViewController: NSViewController {
 
         switch game.phase {
         case .title:
-            statusLabel.stringValue = "NEON VORTEX\n\nPRESS RETURN"
+            statusLabel.stringValue = "RADIAL AFTERBURN\n\nPRESS RETURN"
             statusLabel.textColor = NSColor(calibratedRed: 1, green: 0.12, blue: 0.62, alpha: 1)
         case .playing:
             if game.waveBanner > 0 {
@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = GameViewController()
         let window = NSWindow(contentViewController: controller)
-        window.title = "Neon Vortex"
+        window.title = "Radial Afterburn"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 1100, height: 760))
         window.minSize = NSSize(width: 720, height: 520)
@@ -138,6 +138,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
+}
+
+let arguments = CommandLine.arguments
+if let idx = arguments.firstIndex(of: "--export-music") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "theme.wav"
+    let sampleRate = Float(GameAudio.sampleRate)
+    let ok = Soundtrack.exportWAV(layers: Soundtrack.render(sampleRate: sampleRate), sampleRate: sampleRate, path: path)
+    exit(ok ? 0 : 1)
+}
+func intArg(_ name: String, _ def: Int) -> Int {
+    guard let i = arguments.firstIndex(of: name), i + 1 < arguments.count, let v = Int(arguments[i + 1]) else { return def }
+    return v
+}
+if let idx = arguments.firstIndex(of: "--screenshot") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "screenshot.png"
+    let ok = MainActor.assumeIsolated {
+        runScreenshot(path: path, frames: intArg("--frames", 90), width: intArg("--width", 1100), height: intArg("--height", 760))
+    }
+    exit(ok ? 0 : 1)
+}
+if let idx = arguments.firstIndex(of: "--record") {
+    let path = idx + 1 < arguments.count ? arguments[idx + 1] : "demo.mp4"
+    let ok = MainActor.assumeIsolated {
+        runRecording(path: path, seconds: intArg("--seconds", 30), width: intArg("--width", 1100), height: intArg("--height", 760))
+    }
+    exit(ok ? 0 : 1)
 }
 
 let app = NSApplication.shared
